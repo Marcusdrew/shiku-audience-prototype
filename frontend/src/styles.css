@@ -1,0 +1,349 @@
+:root {
+  --encre: #1b2430;
+  --encre-douce: #4a5668;
+  --fond: #f4f6f9;
+  --surface: #ffffff;
+  --bordure: #d5dbe4;
+  --marque: #17406b;
+  --marque-fonce: #0f2d4d;
+  --ok: #17663a;
+  --ok-fond: #e1f3e8;
+  --erreur: #9b1c1c;
+  --erreur-fond: #fbe5e5;
+  --attention: #7a4a00;
+  --attention-fond: #fdf0d5;
+  --info-fond: #e4eef9;
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
+  color: var(--encre);
+  background: var(--fond);
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+}
+h1 {
+  font-size: 1.6rem;
+  margin: 0 0 0.25rem;
+}
+a {
+  color: var(--marque);
+}
+:focus-visible {
+  outline: 3px solid #e0a100;
+  outline-offset: 2px;
+}
+.lien-evitement {
+  position: absolute;
+  left: -999px;
+}
+.lien-evitement:focus {
+  left: 8px;
+  top: 8px;
+  background: #fff;
+  padding: 8px;
+  z-index: 10;
+}
+
+.shell {
+  display: grid;
+  grid-template-columns: 15rem 1fr;
+  grid-template-rows: auto 1fr;
+  min-height: 100vh;
+}
+.entete {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.6rem 1.25rem;
+  background: var(--marque-fonce);
+  color: #fff;
+}
+.entete__marque {
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.entete__session {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.entete__roles {
+  font-size: 0.85rem;
+  opacity: 0.85;
+}
+.nav {
+  display: flex;
+  flex-direction: column;
+  padding: 1rem 0.75rem;
+  background: var(--surface);
+  border-right: 1px solid var(--bordure);
+  gap: 2px;
+}
+.nav a {
+  padding: 0.6rem 0.8rem;
+  border-radius: 6px;
+  text-decoration: none;
+  color: var(--encre);
+}
+.nav a:hover {
+  background: var(--fond);
+}
+.nav a.active {
+  background: var(--marque);
+  color: #fff;
+  font-weight: 600;
+}
+.contenu {
+  padding: 1.5rem 2rem;
+  max-width: 70rem;
+}
+.lead {
+  color: var(--encre-douce);
+  margin: 0 0 1.25rem;
+}
+.note {
+  color: var(--encre-douce);
+  font-size: 0.85rem;
+}
+.menu-bouton {
+  display: none;
+}
+
+.grille {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+  gap: 1rem;
+}
+.carte {
+  background: var(--surface);
+  border: 1px solid var(--bordure);
+  border-radius: 8px;
+  padding: 1rem 1.1rem;
+}
+.carte__titre {
+  font-size: 1rem;
+  margin: 0 0 0.6rem;
+}
+.liste-simple {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+.definitions {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.35rem 1rem;
+  margin: 0.75rem 0 0;
+}
+.definitions dt {
+  font-weight: 600;
+}
+.definitions dd {
+  margin: 0;
+}
+.definitions ul {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.1rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  border: 1px solid currentColor;
+}
+.badge--ok {
+  color: var(--ok);
+  background: var(--ok-fond);
+}
+.badge--erreur {
+  color: var(--erreur);
+  background: var(--erreur-fond);
+}
+.badge--attention {
+  color: var(--attention);
+  background: var(--attention-fond);
+}
+.badge--neutre {
+  color: var(--encre-douce);
+  background: var(--fond);
+}
+
+.alerte {
+  padding: 0.8rem 1rem;
+  border-radius: 8px;
+  margin: 0 0 1rem;
+  border: 1px solid;
+}
+.alerte p {
+  margin: 0.25rem 0 0.5rem;
+}
+.alerte--erreur {
+  background: var(--erreur-fond);
+  color: var(--erreur);
+  border-color: var(--erreur);
+}
+.alerte--info {
+  background: var(--info-fond);
+  border-color: var(--marque);
+}
+
+.bouton {
+  display: inline-block;
+  font: inherit;
+  cursor: pointer;
+  padding: 0.55rem 1rem;
+  border-radius: 6px;
+  border: 1px solid var(--marque);
+  background: var(--marque);
+  color: #fff;
+  text-decoration: none;
+}
+.bouton:hover {
+  background: var(--marque-fonce);
+}
+.bouton--secondaire {
+  background: transparent;
+  color: inherit;
+  border-color: currentColor;
+}
+.entete .bouton--secondaire:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+.bouton--icone {
+  padding: 0.35rem 0.7rem;
+}
+
+.spinner {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  color: var(--encre-douce);
+}
+.spinner--plein {
+  min-height: 50vh;
+  justify-content: center;
+}
+.spinner__rond {
+  width: 1.1rem;
+  height: 1.1rem;
+  border: 3px solid var(--bordure);
+  border-top-color: var(--marque);
+  border-radius: 50%;
+  animation: tourner 0.8s linear infinite;
+}
+@keyframes tourner {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .spinner__rond {
+    animation: none;
+  }
+}
+
+.connexion {
+  max-width: 28rem;
+  margin: 12vh auto;
+  padding: 2rem;
+  background: var(--surface);
+  border: 1px solid var(--bordure);
+  border-radius: 10px;
+  display: grid;
+  gap: 1rem;
+}
+
+@media (max-width: 800px) {
+  .shell {
+    grid-template-columns: 1fr;
+  }
+  .menu-bouton {
+    display: inline-block;
+    background: transparent;
+    color: #fff;
+    border-color: #fff;
+  }
+  .nav {
+    display: none;
+    border-right: 0;
+    border-bottom: 1px solid var(--bordure);
+  }
+  .nav--ouverte {
+    display: flex;
+  }
+  .contenu {
+    padding: 1rem;
+  }
+  .entete__session {
+    margin-left: 0;
+    width: 100%;
+  }
+}
+
+/* Lot métier : tableaux, formulaires, actions */
+.tableau {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+.tableau th,
+.tableau td {
+  text-align: left;
+  padding: 0.5rem 0.6rem;
+  border-bottom: 1px solid var(--bordure, #d0d7de);
+  vertical-align: top;
+}
+.defile {
+  overflow-x: auto;
+}
+.formulaire {
+  display: grid;
+  gap: 0.75rem;
+  max-width: 36rem;
+}
+.champ {
+  display: grid;
+  gap: 0.25rem;
+}
+.champ input,
+.champ select,
+.champ textarea {
+  font: inherit;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid #8a94a0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+.filtres {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: end;
+  margin-bottom: 1rem;
+}
+.pile {
+  display: grid;
+  gap: 1rem;
+}

@@ -1,0 +1,151 @@
+{
+  "realm": "shiku",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "bruteForceProtected": true,
+  "roles": {
+    "realm": [
+      {
+        "name": "reception",
+        "description": "Rôle SHIKU : reception"
+      },
+      {
+        "name": "assistant",
+        "description": "Rôle SHIKU : assistant"
+      },
+      {
+        "name": "authority",
+        "description": "Rôle SHIKU : authority"
+      },
+      {
+        "name": "administrator",
+        "description": "Rôle SHIKU : administrator"
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "shiku-web",
+      "name": "SHIKU web",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "protocol": "openid-connect",
+      "redirectUris": [
+        "http://localhost:5173/*"
+      ],
+      "webOrigins": [
+        "http://localhost:5173"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:5173/*"
+      },
+      "defaultClientScopes": [
+        "basic",
+        "web-origins",
+        "profile",
+        "roles",
+        "email"
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "reception.test",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "reception.test@shiku.invalid",
+      "firstName": "Test",
+      "lastName": "Reception",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${KC_PASSWORD_RECEPTION}",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "reception"
+      ]
+    },
+    {
+      "username": "assistant1.test",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "assistant1.test@shiku.invalid",
+      "firstName": "Test",
+      "lastName": "Assistant1",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${KC_PASSWORD_ASSISTANT1}",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "assistant"
+      ]
+    },
+    {
+      "username": "assistant2.test",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "assistant2.test@shiku.invalid",
+      "firstName": "Test",
+      "lastName": "Assistant2",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${KC_PASSWORD_ASSISTANT2}",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "assistant"
+      ]
+    },
+    {
+      "username": "authority.test",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "authority.test@shiku.invalid",
+      "firstName": "Test",
+      "lastName": "Authority",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${KC_PASSWORD_AUTHORITY}",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "authority"
+      ]
+    },
+    {
+      "username": "admin.test",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "admin.test@shiku.invalid",
+      "firstName": "Test",
+      "lastName": "Admin",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${KC_PASSWORD_ADMIN}",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "administrator"
+      ]
+    }
+  ]
+}

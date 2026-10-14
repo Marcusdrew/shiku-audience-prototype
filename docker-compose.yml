@@ -1,0 +1,91 @@
+# Première fois : bash scripts/init-local.sh   (génère .env, jamais versionné)
+# Ensuite       : docker compose up --build
+name: shiku
+
+services:
+  db:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: ${POSTGRES_SUPERUSER}
+      POSTGRES_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD:?POSTGRES_SUPERUSER_PASSWORD manquant, lancez bash scripts/init-local.sh}
+      POSTGRES_DB: ${POSTGRES_DB}
+      DB_MIGRATOR_PASSWORD: ${DB_MIGRATOR_PASSWORD:?DB_MIGRATOR_PASSWORD manquant, lancez bash scripts/init-local.sh}
+      DB_APP_PASSWORD: ${DB_APP_PASSWORD:?DB_APP_PASSWORD manquant, lancez bash scripts/init-local.sh}
+      DB_PURGE_PASSWORD: ${DB_PURGE_PASSWORD:?DB_PURGE_PASSWORD manquant, lancez bash scripts/init-local.sh}
+      DB_KEYCLOAK_PASSWORD: ${DB_KEYCLOAK_PASSWORD:?DB_KEYCLOAK_PASSWORD manquant, lancez bash scripts/init-local.sh}
+    volumes:
+      - shiku_pgdata:/var/lib/postgresql
+      - ./infra/postgres/01-roles.sh:/docker-entrypoint-initdb.d/01-roles.sh:ro
+      - ./infra/postgres/02-keycloak.sh:/docker-entrypoint-initdb.d/02-keycloak.sh:ro
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_SUPERUSER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.8.0
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?KEYCLOAK_ADMIN_PASSWORD manquant, lancez bash scripts/init-local.sh}
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://db:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: ${DB_KEYCLOAK_PASSWORD:?DB_KEYCLOAK_PASSWORD manquant, lancez bash scripts/init-local.sh}
+      KC_HTTP_PORT: 8080
+      KC_HEALTH_ENABLED: "true"
+      # Mots de passe des comptes de test du realm (placeholders ${KC_PASSWORD_*} du fichier realm)
+      KC_PASSWORD_RECEPTION: ${KC_PASSWORD_RECEPTION:?KC_PASSWORD_RECEPTION manquant, lancez bash scripts/init-local.sh}
+      KC_PASSWORD_ASSISTANT1: ${KC_PASSWORD_ASSISTANT1:?KC_PASSWORD_ASSISTANT1 manquant, lancez bash scripts/init-local.sh}
+      KC_PASSWORD_ASSISTANT2: ${KC_PASSWORD_ASSISTANT2:?KC_PASSWORD_ASSISTANT2 manquant, lancez bash scripts/init-local.sh}
+      KC_PASSWORD_AUTHORITY: ${KC_PASSWORD_AUTHORITY:?KC_PASSWORD_AUTHORITY manquant, lancez bash scripts/init-local.sh}
+      KC_PASSWORD_ADMIN: ${KC_PASSWORD_ADMIN:?KC_PASSWORD_ADMIN manquant, lancez bash scripts/init-local.sh}
+    volumes:
+      - ./infra/keycloak/realm-shiku.json:/opt/keycloak/data/import/realm-shiku.json:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${KEYCLOAK_PORT}:8080"
+
+  migrate:
+    image: shiku-backend:local
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    command:
+      - node_modules/.bin/node-pg-migrate
+      - up
+      - --migrations-dir
+      - migrations
+      - --migration-file-language
+      - sql
+    environment:
+      DATABASE_URL: postgres://shiku_migrator:${DB_MIGRATOR_PASSWORD:?DB_MIGRATOR_PASSWORD manquant, lancez bash scripts/init-local.sh}@db:5432/${POSTGRES_DB}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  app:
+    image: shiku-backend:local
+    environment:
+      PORT: 3000
+      # Étape 1 : vérification des jetons. L'émetteur (iss) est l'adresse vue par le NAVIGATEUR ;
+      # les clés publiques (JWKS) sont lues par le conteneur via le réseau Docker : d'où deux variables.
+      # Sans KEYCLOAK_ISSUER, le backend refuse toute route protégée (503, échec fermé).
+      KEYCLOAK_ISSUER: http://localhost:${KEYCLOAK_PORT:-8080}/realms/shiku
+      KEYCLOAK_JWKS_URL: http://keycloak:8080/realms/shiku/protocol/openid-connect/certs
+      AUTH_CLIENT_ID: shiku-web
+      DATABASE_URL: postgres://shiku_app:${DB_APP_PASSWORD:?DB_APP_PASSWORD manquant, lancez bash scripts/init-local.sh}@db:5432/${POSTGRES_DB}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "127.0.0.1:${APP_PORT}:3000"
+
+volumes:
+  shiku_pgdata:
