@@ -64,7 +64,20 @@ export async function connecter(utilisateur, motDePasse, { pkce = true } = {}) {
     body: formulaire({ username: utilisateur, password: motDePasse }),
   });
   const loc = r2.headers.get('location') ?? '';
-  if (!loc.startsWith(REDIR)) return { etape: 'connexion', statut: r2.status };
+  if (!loc.startsWith(REDIR)) {
+    // Motif lu dans la page renvoyée par Keycloak (jamais affichée : elle peut contenir l'identifiant).
+    const page = r2.status === 200 ? await r2.text() : '';
+    // Message d'erreur affiché par Keycloak (thème de connexion v2 : élément « kc-feedback-text »).
+    const message = page.match(/kc-feedback-text[^>]*>\s*([^<]+)/)?.[1]?.trim() ?? '';
+    const motif = /required-action/i.test(`${loc} ${page.match(/action="([^"]+)"/)?.[1] ?? ''}`)
+      ? 'action requise par Keycloak (changement de mot de passe, profil ou e-mail à compléter)'
+      : /disabled|désactivé|bloqué/i.test(message)
+        ? 'compte désactivé ou temporairement bloqué par la protection contre les tentatives répétées'
+        : /invalid|invalide|incorrect/i.test(message)
+          ? 'identifiant ou mot de passe refusé (mot de passe différent de celui de .env, ou blocage temporaire)'
+          : `réponse inattendue de Keycloak${message ? ` : « ${message} »` : ''}`;
+    return { etape: 'connexion', statut: r2.status, motif };
+  }
   return { code: new URL(loc).searchParams.get('code'), verifier };
 }
 

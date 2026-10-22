@@ -19,6 +19,29 @@ Le journal (`journal`, migration `1760000200000`) est **protégé contre la modi
 - Aucune alerte en cas d'accès au journal (non développée).
 - Seules les actions listées dans `API.md` écrivent au journal. Les consultations de données ne sont pas journalisées.
 
+## Rôle de lecture d'audit `shiku_audit` sur un volume déjà initialisé
+
+Le rôle `shiku_audit` (lecture seule de `journal` et `journal_purge`) est créé par `infra/postgres/01-roles.sh`, que l'image PostgreSQL n'exécute **qu'à la création du volume**. La migration `1760000600000` lui accorde `SELECT` **seulement s'il existe déjà**. Un volume créé avant l'ajout de ce rôle n'a donc ni le rôle ni ses droits : `pnpm test:db` échoue alors avec `password authentication failed for user "shiku_audit"` (suite `conservation-identite.spec.ts`).
+
+Rattrapage, sans supprimer le volume ni les données :
+
+```bash
+docker compose up -d db          # base démarrée
+pnpm migrate:up                  # si les migrations ne sont pas à jour
+bash scripts/octroyer-droits-audit.sh
+```
+
+- Prérequis : `POSTGRES_SUPERUSER`, `POSTGRES_DB` et `DB_AUDIT_PASSWORD` présents dans `.env`.
+- Le script crée le rôle s'il manque, avec le mot de passe `DB_AUDIT_PASSWORD` de `.env`, puis accorde exactement ce que prévoient `01-roles.sh` et la migration : `CONNECT`, `USAGE` sur le schéma `public`, `SELECT` sur `journal` et `journal_purge`. Rien d'autre.
+- Il est rejouable et **ne change jamais le mot de passe d'un rôle existant**. Si le rôle existe avec un autre mot de passe que celui de `.env`, c'est à vous de choisir lequel garder (`ALTER ROLE shiku_audit PASSWORD …` dans `psql`, ou modifier `.env`).
+- Il refuse d'agir si les tables du journal sont absentes (migrations non appliquées).
+- Aucun secret n'est affiché ni passé en argument de commande.
+- Ne lancez pas `docker compose down -v` ni `bash scripts/init-local.sh --force` pour résoudre ce cas : le premier détruit les données, le second régénère tous les mots de passe alors que ceux des rôles existants sont inscrits dans le volume.
+
+Contrôle sans secret : `docker compose exec -T db psql -U <POSTGRES_SUPERUSER> -d <POSTGRES_DB> -c "\dp journal"` ; `shiku_audit` n'y apparaît qu'avec `r` (lecture).
+
+Qui détient ce mot de passe, et si ce rôle doit lire la table brute ou une vue, reste à décider (arbitrage du 19/10, point 1 ; question Q-3) : aujourd'hui personne ne l'utilise hors des tests (`SECRETS.md`).
+
 ## Preuves exécutées
 
 `backend/test/db/api-metier.spec.ts` (groupe « journal d'audit ») : refus `UPDATE/DELETE/TRUNCATE` par la base pour `shiku_app` (code 42501), déclencheurs actifs même pour le superutilisateur sans les désactiver, horodatage serveur, atomicité acte + journal, absence de route d'écriture. Exécutés sur PostgreSQL 16 (voir `ETAT-FONCTIONNEL.md`).
