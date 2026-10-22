@@ -25,13 +25,14 @@ décision métier.
 Deux variables distinctes car, en `start-dev`, l'`iss` suit l'hôte utilisé par le navigateur alors que le
 conteneur joint Keycloak par le réseau Docker. Câblé dans `docker-compose.yml` (service `app`).
 
-## Matrice RBAC : PROVISOIRE (H1)
+## Matrice RBAC : officielle Gate 02A, avec extensions signalées
 
-`backend/src/habilitation/matrice-provisoire.ts`, statut `HYPOTHESE`, dérivée des seules user stories
-du backlog. Le document officiel `phase-03-matrice-rbac-delegation.md` n'est pas disponible : dès qu'il
-l'est, il remplace cette matrice (le chargeur refuse un statut `OFFICIELLE` sans source citée).
-`audience.cloturer` n'est accordée à **aucun** rôle (H4 : le clôtureur n'est pas désigné).
-Les délégations ne sont pas modélisées. Le Protocole est un profil de délégation, pas un rôle du jeton.
+`backend/src/habilitation/matrice-officielle.ts`, transcrite de `phase-03-matrice-rbac-delegation.md`
+(fournie par M. Jordan le 16/10/2026). Le test `matrice.spec.ts` compare le code à la table officielle.
+Les droits « D » (délégation) sont **refusés** tant que les délégations n'existent pas (Sprint 2).
+Le Protocole n'est pas un rôle du jeton : c'est un profil de délégation. Une action inconnue est refusée.
+Les actions absentes de la matrice officielle (extensions) portent `hypothese` : voir `HYPOTHESES.md`.
+H1 est donc levée pour les 26 actions officielles ; elle reste ouverte pour les extensions.
 
 ## Hypothèses
 

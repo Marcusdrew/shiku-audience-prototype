@@ -12,6 +12,7 @@ services:
       DB_MIGRATOR_PASSWORD: ${DB_MIGRATOR_PASSWORD:?DB_MIGRATOR_PASSWORD manquant, lancez bash scripts/init-local.sh}
       DB_APP_PASSWORD: ${DB_APP_PASSWORD:?DB_APP_PASSWORD manquant, lancez bash scripts/init-local.sh}
       DB_PURGE_PASSWORD: ${DB_PURGE_PASSWORD:?DB_PURGE_PASSWORD manquant, lancez bash scripts/init-local.sh}
+      DB_AUDIT_PASSWORD: ${DB_AUDIT_PASSWORD:?DB_AUDIT_PASSWORD manquant, lancez bash scripts/init-local.sh}
       DB_KEYCLOAK_PASSWORD: ${DB_KEYCLOAK_PASSWORD:?DB_KEYCLOAK_PASSWORD manquant, lancez bash scripts/init-local.sh}
     volumes:
       - shiku_pgdata:/var/lib/postgresql
@@ -43,6 +44,8 @@ services:
       KC_PASSWORD_ASSISTANT2: ${KC_PASSWORD_ASSISTANT2:?KC_PASSWORD_ASSISTANT2 manquant, lancez bash scripts/init-local.sh}
       KC_PASSWORD_AUTHORITY: ${KC_PASSWORD_AUTHORITY:?KC_PASSWORD_AUTHORITY manquant, lancez bash scripts/init-local.sh}
       KC_PASSWORD_ADMIN: ${KC_PASSWORD_ADMIN:?KC_PASSWORD_ADMIN manquant, lancez bash scripts/init-local.sh}
+      # Secret du client « shiku-service » (compte de service de l'application), placeholder ${KC_SERVICE_PASSWORD} du realm
+      KC_SERVICE_PASSWORD: ${KC_SERVICE_PASSWORD:?KC_SERVICE_PASSWORD manquant, lancez bash scripts/init-local.sh}
     volumes:
       - ./infra/keycloak/realm-shiku.json:/opt/keycloak/data/import/realm-shiku.json:ro
     depends_on:
@@ -80,6 +83,12 @@ services:
       KEYCLOAK_ISSUER: http://localhost:${KEYCLOAK_PORT:-8080}/realms/shiku
       KEYCLOAK_JWKS_URL: http://keycloak:8080/realms/shiku/protocol/openid-connect/certs
       AUTH_CLIENT_ID: shiku-web
+      # Compte de service : créer des utilisateurs et leur attribuer un rôle (jamais pour se connecter).
+      # Sans ces variables, la gestion des comptes répond 503 (échec fermé).
+      KEYCLOAK_ADMIN_URL: http://keycloak:8080
+      KEYCLOAK_REALM: shiku
+      KEYCLOAK_SERVICE_CLIENT_ID: shiku-service
+      KEYCLOAK_SERVICE_CLIENT_SECRET: ${KC_SERVICE_PASSWORD:?KC_SERVICE_PASSWORD manquant, lancez bash scripts/init-local.sh}
       DATABASE_URL: postgres://shiku_app:${DB_APP_PASSWORD:?DB_APP_PASSWORD manquant, lancez bash scripts/init-local.sh}@db:5432/${POSTGRES_DB}
     depends_on:
       migrate:

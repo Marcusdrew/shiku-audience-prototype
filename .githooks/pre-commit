@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Refuse un commit qui contient un secret probable, un fichier .env/clé, un fichier de plus de 1 Mo,
+# ou un fichier mal formaté (Prettier). Installé par scripts/bootstrap.sh (core.hooksPath).
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+node scripts/controles-commit.mjs indexe
+# Format : même contrôle que la CI (Prettier de chaque paquet).
+if git diff --cached --name-only --diff-filter=ACM | grep -qE '^(backend|frontend)/'; then
+  pnpm -s format:check >/dev/null 2>&1 || { echo "Format refusé (Prettier). Corrigez avec : pnpm --filter shiku-backend format  (et frontend)." >&2; exit 1; }
+fi

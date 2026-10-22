@@ -54,6 +54,24 @@
         "roles",
         "email"
       ]
+    },
+    {
+      "clientId": "shiku-service",
+      "name": "SHIKU service (gestion des comptes par l'application)",
+      "description": "Compte de service réservé au backend. Ne se connecte jamais. Droits : gestion des utilisateurs et rôles seulement.",
+      "enabled": true,
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${KC_SERVICE_PASSWORD}",
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "protocol": "openid-connect",
+      "defaultClientScopes": [
+        "basic",
+        "roles"
+      ]
     }
   ],
   "users": [
@@ -61,9 +79,9 @@
       "username": "reception.test",
       "enabled": true,
       "emailVerified": true,
-      "email": "reception.test@shiku.invalid",
-      "firstName": "Test",
-      "lastName": "Reception",
+      "email": "reception.test@example.test",
+      "firstName": "Réa",
+      "lastName": "Test-Accueil",
       "credentials": [
         {
           "type": "password",
@@ -79,9 +97,9 @@
       "username": "assistant1.test",
       "enabled": true,
       "emailVerified": true,
-      "email": "assistant1.test@shiku.invalid",
-      "firstName": "Test",
-      "lastName": "Assistant1",
+      "email": "assistant1.test@example.test",
+      "firstName": "Alex",
+      "lastName": "Test-Assistant-1",
       "credentials": [
         {
           "type": "password",
@@ -97,9 +115,9 @@
       "username": "assistant2.test",
       "enabled": true,
       "emailVerified": true,
-      "email": "assistant2.test@shiku.invalid",
-      "firstName": "Test",
-      "lastName": "Assistant2",
+      "email": "assistant2.test@example.test",
+      "firstName": "Alex",
+      "lastName": "Test-Assistant-2",
       "credentials": [
         {
           "type": "password",
@@ -115,9 +133,9 @@
       "username": "authority.test",
       "enabled": true,
       "emailVerified": true,
-      "email": "authority.test@shiku.invalid",
-      "firstName": "Test",
-      "lastName": "Authority",
+      "email": "authority.test@example.test",
+      "firstName": "Aude",
+      "lastName": "Test-Autorité",
       "credentials": [
         {
           "type": "password",
@@ -133,9 +151,9 @@
       "username": "admin.test",
       "enabled": true,
       "emailVerified": true,
-      "email": "admin.test@shiku.invalid",
-      "firstName": "Test",
-      "lastName": "Admin",
+      "email": "admin.test@example.test",
+      "firstName": "Adam",
+      "lastName": "Test-Admin",
       "credentials": [
         {
           "type": "password",
@@ -146,6 +164,18 @@
       "realmRoles": [
         "administrator"
       ]
+    },
+    {
+      "username": "service-account-shiku-service",
+      "enabled": true,
+      "serviceAccountClientId": "shiku-service",
+      "clientRoles": {
+        "realm-management": [
+          "manage-users",
+          "query-users",
+          "view-users"
+        ]
+      }
     }
   ]
 }

@@ -183,11 +183,12 @@ describe('accès HTTP avec jetons vérifiés', () => {
 
     it('route à droit : seul le rôle listé passe', async () => {
       expect((await appel(serveur.url, '/essai/depot')).status).toBe(401);
-      expect((await appel(serveur.url, '/essai/depot', await jeton(['reception']))).status).toBe(
-        200,
-      );
-      for (const role of ['assistant', 'authority', 'administrator'])
-        expect((await appel(serveur.url, '/essai/depot', await jeton([role]))).status).toBe(403);
+      // Matrice officielle : demande.creer est permis à Autorité, Assistant, Réception ; pas à l'Administrateur.
+      for (const role of ['reception', 'assistant', 'authority'])
+        expect((await appel(serveur.url, '/essai/depot', await jeton([role]))).status).toBe(200);
+      expect(
+        (await appel(serveur.url, '/essai/depot', await jeton(['administrator']))).status,
+      ).toBe(403);
       expect((await appel(serveur.url, '/essai/depot', await jeton([]))).status).toBe(403);
     });
 
@@ -208,9 +209,11 @@ describe('accès HTTP avec jetons vérifiés', () => {
       expect(ok.status).toBe(201);
     });
 
-    it('clôture : refusée à tous les rôles tant que le responsable n’est pas désigné (H4)', async () => {
-      for (const role of ['reception', 'assistant', 'authority', 'administrator'])
+    it('clôture : Assistant et Autorité seulement (H4, réponse de M. Jordan)', async () => {
+      for (const role of ['reception', 'administrator'])
         expect((await appel(serveur.url, '/essai/cloture', await jeton([role]))).status).toBe(403);
+      for (const role of ['assistant', 'authority'])
+        expect((await appel(serveur.url, '/essai/cloture', await jeton([role]))).status).toBe(200);
     });
 
     it('action absente de la matrice : refusée à tous', async () => {

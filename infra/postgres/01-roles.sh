@@ -10,11 +10,13 @@ CREATE ROLE shiku_migrator LOGIN PASSWORD '${DB_MIGRATOR_PASSWORD}';
 CREATE ROLE shiku_app      LOGIN PASSWORD '${DB_APP_PASSWORD}';
 -- Purge : seul rôle autorisé à supprimer des lignes à l'échéance de conservation (D04-10).
 CREATE ROLE shiku_purge    LOGIN PASSWORD '${DB_PURGE_PASSWORD}';
+-- Lecture d'audit : lecture seule du journal, aucun droit d'écriture (T0-33, US-05-011).
+CREATE ROLE shiku_audit    LOGIN PASSWORD '${DB_AUDIT_PASSWORD}';
 
 -- Le schéma public n'est plus ouvert à tous.
 REVOKE ALL ON SCHEMA public FROM PUBLIC;
 ALTER SCHEMA public OWNER TO shiku_migrator;
-GRANT USAGE ON SCHEMA public TO shiku_app, shiku_purge;
+GRANT USAGE ON SCHEMA public TO shiku_app, shiku_purge, shiku_audit;
 REVOKE ALL ON DATABASE ${POSTGRES_DB} FROM PUBLIC;
-GRANT CONNECT ON DATABASE ${POSTGRES_DB} TO shiku_migrator, shiku_app, shiku_purge;
+GRANT CONNECT ON DATABASE ${POSTGRES_DB} TO shiku_migrator, shiku_app, shiku_purge, shiku_audit;
 SQL
