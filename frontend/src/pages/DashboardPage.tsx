@@ -94,7 +94,8 @@ export function DashboardPage() {
               </dl>
               <p className="note">
                 Jeton vérifié par le backend. Cette identité n’accorde aucun droit métier : les
-                droits sont décidés par le serveur, action par action (matrice provisoire).
+                droits sont décidés par le serveur, action par action (matrice Gate 02A ; les droits
+                « délégation » ne sont pas encore actifs).
               </p>
             </>
           )}

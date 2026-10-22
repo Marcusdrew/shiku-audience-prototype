@@ -97,11 +97,18 @@ describe('routes privées', () => {
     );
   });
 
-  it('dit explicitement qu’un module n’a pas d’API, sans données fictives', async () => {
+  it('affiche le répertoire des visiteurs sans inventer de données', async () => {
     monter(
       { expired: false, access_token: 'a.b.c', profile: { preferred_username: 'x' } },
       '/relationnel',
     );
-    expect(await screen.findByText('API non disponible')).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { name: 'Répertoire des visiteurs' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /Les notes, attestations et autres éléments du dossier relationnel ne sont pas disponibles dans l’API actuelle/,
+      ),
+    ).toBeInTheDocument();
   });
 });

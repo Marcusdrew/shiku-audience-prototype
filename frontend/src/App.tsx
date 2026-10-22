@@ -15,6 +15,7 @@ import { JournalPage } from './pages/JournalPage';
 import { LoginPage } from './pages/LoginPage';
 import { ModulePage } from './pages/ModulePage';
 import { OperationsPage } from './pages/OperationsPage';
+import { RelationnelPage } from './pages/RelationnelPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { NAVIGATION } from './navigation';
 
@@ -38,6 +39,7 @@ export function AppRoutes() {
           <Route path="/operations" element={<OperationsPage />} />
           <Route path="/journal" element={<JournalPage />} />
           <Route path="/administration" element={<AdministrationPage />} />
+          <Route path="/relationnel" element={<RelationnelPage />} />
           {NAVIGATION.filter((e) => !e.implemente).map((e) => (
             <Route key={e.chemin} path={e.chemin} element={<ModulePage />} />
           ))}
