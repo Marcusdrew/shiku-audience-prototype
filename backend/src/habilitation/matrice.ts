@@ -1,14 +1,21 @@
-import { estRole, type Role } from './roles.js';
+import { estRole, PROFILS_DELEGUES, type ProfilDelegue, type Role } from './roles.js';
 
 // Matrice « action → rôles autorisés ». Données de configuration versionnées, jamais de logique.
 //
-// STATUT : tant que la matrice RBAC officielle (docs/cgpa/phase-03-matrice-rbac-delegation.md)
-// n'a pas été fournie et vérifiée ligne à ligne, la matrice est `HYPOTHESE` (HYPOTHESE H1).
-// Passer à `OFFICIELLE` exige de citer le document source dans `reference`.
+// STATUT : `OFFICIELLE` exige de citer le document source dans `reference` (matrice Gate 02A).
+// `HYPOTHESE` reste possible pour les matrices d'essai des tests.
 
 export interface DefinitionAction {
-  /** Rôles autorisés. Liste vide = personne (action non attribuée, donc refusée à tous). */
+  /** Rôles autorisés (P ou L). Liste vide = personne (action non attribuée, donc refusée à tous). */
   readonly roles: readonly Role[];
+  /** Profils qui n'ont l'action que PAR DÉLÉGATION (D). Jamais autorisés tant qu'aucune délégation n'existe. */
+  readonly delegues?: readonly ProfilDelegue[];
+  /** Ce que signifie le « L » (accès limité) ou la condition de la matrice. */
+  readonly limites?: string;
+  /** Renseigné si l'action ne figure PAS dans la matrice officielle : identifiant de l'hypothèse. */
+  readonly hypothese?: string;
+  /** Une route du backend exécute-t-elle cette action ? (false : prévue par la matrice, non développée) */
+  readonly implementee?: boolean;
   /** D'où vient la règle (story, décision, document). Obligatoire : aucune règle sans source. */
   readonly source: string;
   readonly remarque?: string;
@@ -55,6 +62,20 @@ export function validerMatrice(brut: unknown): Matrice {
         throw new MatriceInvalideError(`action « ${nom} » : rôle inconnu « ${String(r)} »`);
     if (new Set(d.roles).size !== d.roles.length)
       throw new MatriceInvalideError(`action « ${nom} » : rôle en double`);
+    if (d.delegues !== undefined) {
+      if (!Array.isArray(d.delegues))
+        throw new MatriceInvalideError(`action « ${nom} » : delegues doit être une liste`);
+      for (const p of d.delegues)
+        if (!(PROFILS_DELEGUES as readonly unknown[]).includes(p))
+          throw new MatriceInvalideError(
+            `action « ${nom} » : profil délégué inconnu « ${String(p)} »`,
+          );
+      for (const p of d.delegues)
+        if ((d.roles as unknown[]).includes(p))
+          throw new MatriceInvalideError(
+            `action « ${nom} » : « ${String(p)} » ne peut être à la fois permis (P) et délégué (D)`,
+          );
+    }
     if (typeof d.source !== 'string' || d.source.trim() === '')
       throw new MatriceInvalideError(`action « ${nom} » : source manquante`);
   }

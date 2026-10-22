@@ -7,9 +7,10 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { MODULES_METIER } from '../../src/app.module.js';
 import { AuthModule } from '../../src/auth/auth.module.js';
 import { DbModule } from '../../src/db/db.module.js';
-import { MATRICE_PROVISOIRE } from '../../src/habilitation/matrice-provisoire.js';
 import type { Matrice } from '../../src/habilitation/matrice.js';
 import { SanteController } from '../../src/sante/sante.controller.js';
+import { MUTATIONS_JOURNALISEES } from '../habilitation/mutations-journalisees.js';
+import { demarrerFauxKeycloak, type FauxKeycloak, SECRET_ESSAI } from './faux-keycloak.js';
 import { CLIENT, ISSUER, creerCles, revendications, signer } from '../auth/outils.js';
 
 // Tests d'INTÉGRATION des API métier : vraie base PostgreSQL migrée (rôles + migrations), vrai
@@ -61,6 +62,7 @@ async function demarrer(matrice?: Matrice) {
 
 describe('API métier sur PostgreSQL réel', () => {
   let serveur: Awaited<ReturnType<typeof demarrer>>;
+  let kc: FauxKeycloak;
   let admin: pg.Client; // superutilisateur : préparation et nettoyage UNIQUEMENT
   let appBase: pg.Client; // rôle applicatif : pour prouver ce que la base refuse
   let orgId: string;
@@ -147,13 +149,24 @@ describe('API métier sur PostgreSQL réel', () => {
     await creerActeur('inactif', 'assistant', orgId, false);
     await creerActeur('sansCompte', 'assistant', orgId, true, false);
 
+    kc = await demarrerFauxKeycloak();
+    Object.assign(process.env, {
+      KEYCLOAK_ADMIN_URL: kc.url,
+      KEYCLOAK_REALM: 'shiku',
+      KEYCLOAK_SERVICE_CLIENT_ID: 'shiku-service',
+      KEYCLOAK_SERVICE_CLIENT_SECRET: SECRET_ESSAI,
+    });
     serveur = await demarrer();
   });
 
   afterAll(async () => {
     await serveur?.app.close();
+    await kc?.fermer();
     // Nettoyage hors application (le rôle applicatif n'a pas DELETE, par conception).
     if (admin) {
+      // Nettoyage des données d'essai par le superutilisateur : les déclencheurs (dont le refus de
+      // purge avant 6 ans) sont désactivés pour cette SESSION seulement. Ce n'est PAS un chemin applicatif.
+      await admin.query('SET session_replication_role = replica').catch(() => undefined);
       for (const o of [orgId, autreOrgId].filter(Boolean)) {
         for (const t of [
           'journal',
@@ -216,39 +229,255 @@ describe('API métier sur PostgreSQL réel', () => {
       expect(liste.statut).toBe(200);
       expect(liste.corps.elements.map((a: { id: string }) => a.id)).toContain(agendaId);
     });
-    it('l’administrateur rattache un compte Keycloak ; le doublon est refusé ; journalisé', async () => {
-      const sub = `${MARQUE}-nouveau`;
-      const r = await appel('administrator', 'POST', '/utilisateurs', {
-        keycloak_sub: sub,
-        nom_complet: 'Fictif Nouveau',
+    describe('comptes : compte de service Keycloak (décision de M. Jordan, 16/10/2026)', () => {
+      const valide = (courriel: string) => ({
+        prenom: 'Fictive',
+        nom: 'Personne',
+        courriel,
+        role: 'assistant',
       });
-      expect(r.statut).toBe(201);
-      expect(
-        (
-          await appel('administrator', 'POST', '/utilisateurs', {
-            keycloak_sub: sub,
-            nom_complet: 'Doublon',
-          })
-        ).statut,
-      ).toBe(409);
-      expect(
-        (await appel('assistant', 'POST', '/utilisateurs', { keycloak_sub: 'x', nom_complet: 'y' }))
-          .statut,
-      ).toBe(403);
-      expect(
-        await compter(
-          `SELECT count(*) n FROM journal WHERE objet_id=$1 AND action='utilisateur.creer'`,
+
+      it('l’Administrateur crée un compte : Keycloak d’abord (compte de service), puis rattachement ; journalisé à son nom', async () => {
+        const avant = kc.appels.length;
+        const r = await appel('administrator', 'POST', '/utilisateurs', valide('a1@example.test'));
+        expect(r.statut).toBe(201);
+        expect(r.corps.nom_complet).toBe('Fictive Personne');
+        const ligne = await admin.query(
+          `SELECT keycloak_sub FROM utilisateur WHERE id=$1 AND organisation_id=$2`,
+          [r.corps.id, orgId],
+        );
+        const sub = ligne.rows[0]!.keycloak_sub as string;
+        expect(kc.utilisateurs.get(sub)).toEqual({
+          courriel: 'a1@example.test',
+          roles: ['assistant'],
+        });
+        // Les appels Keycloak portent le jeton du COMPTE DE SERVICE, jamais celui de l'Administrateur.
+        const nouveaux = kc.appels.slice(avant).filter((a) => a.chemin.startsWith('/admin/'));
+        expect(nouveaux.length).toBeGreaterThan(0);
+        for (const a of nouveaux) expect(kc.jetonsEmis.has(a.autorisation!.slice(7))).toBe(true);
+        const j = await admin.query(
+          `SELECT utilisateur_id, contexte FROM journal WHERE objet_id=$1 AND action='utilisateur.creer'`,
           [r.corps.id],
-        ),
-      ).toBe(1);
+        );
+        expect(j.rowCount).toBe(1);
+        expect(j.rows[0]!.utilisateur_id).toBe(acteurs.administrator.id);
+        expect(j.rows[0]!.contexte).toEqual({
+          nom_complet: 'Fictive Personne',
+          mode: 'creation',
+          role: 'assistant',
+          via: 'compte de service',
+        });
+        // Le courriel (donnée personnelle) n'est pas recopié dans le journal.
+        expect(JSON.stringify(j.rows[0]!.contexte)).not.toContain('example.test');
+      });
+
+      it('seul l’Administrateur peut créer un compte ; sinon 403 et Keycloak n’est même pas appelé', async () => {
+        const avant = kc.appels.length;
+        for (const q of ['reception', 'assistant', 'authority'] as const)
+          expect((await appel(q, 'POST', '/utilisateurs', valide('x@example.test'))).statut).toBe(
+            403,
+          );
+        expect(kc.appels.length).toBe(avant);
+      });
+
+      it('liste blanche (arbitrage du 19/10) : Autorité et Administrateur refusés (403) avant tout appel Keycloak ; Réception acceptée', async () => {
+        const avant = kc.appels.length;
+        for (const role of ['authority', 'administrator']) {
+          const r = await appel('administrator', 'POST', '/utilisateurs', {
+            ...valide(`${role}@example.test`),
+            role,
+          });
+          expect(r.statut, role).toBe(403);
+        }
+        expect(kc.appels.length).toBe(avant);
+        const ok = await appel('administrator', 'POST', '/utilisateurs', {
+          ...valide('rec@example.test'),
+          role: 'reception',
+        });
+        expect(ok.statut).toBe(201);
+      });
+
+      it('valide les entrées : rôle inconnu, courriel invalide, champ en trop (anti mass-assignment)', async () => {
+        const avant = kc.appels.length;
+        const mauvais = [
+          { ...valide('b@example.test'), role: 'protocole' },
+          { ...valide('pas-un-courriel') },
+          { ...valide('c@example.test'), actif: false },
+          { ...valide('d@example.test'), keycloak_sub: 'impose' },
+          { prenom: '', nom: 'X', courriel: 'e@example.test', role: 'assistant' },
+        ];
+        for (const c of mauvais)
+          expect((await appel('administrator', 'POST', '/utilisateurs', c)).statut).toBe(400);
+        expect(kc.appels.length).toBe(avant);
+      });
+
+      it('un courriel déjà utilisé dans Keycloak : 409, rien n’est créé en base', async () => {
+        const n = await compter(`SELECT count(*) n FROM utilisateur WHERE organisation_id=$1`, [
+          orgId,
+        ]);
+        const r = await appel('administrator', 'POST', '/utilisateurs', valide('a1@example.test'));
+        expect(r.statut).toBe(409);
+        expect(
+          await compter(`SELECT count(*) n FROM utilisateur WHERE organisation_id=$1`, [orgId]),
+        ).toBe(n);
+      });
+
+      it('si l’enregistrement local échoue, le compte Keycloak créé est retiré (pas d’orphelin)', async () => {
+        kc.prochainSub = acteurs.reception.sub; // déjà rattaché : la base refuse (unicité)
+        const r = await appel(
+          'administrator',
+          'POST',
+          '/utilisateurs',
+          valide('orphelin@example.test'),
+        );
+        expect(r.statut).toBe(409);
+        expect(
+          [...kc.utilisateurs.values()].some((u) => u.courriel === 'orphelin@example.test'),
+        ).toBe(false);
+      });
+
+      it('Keycloak en panne : 503 sans détail interne et rien en base', async () => {
+        kc.indisponible = true;
+        try {
+          const n = await compter(`SELECT count(*) n FROM utilisateur WHERE organisation_id=$1`, [
+            orgId,
+          ]);
+          const r = await appel('administrator', 'POST', '/utilisateurs', valide('p@example.test'));
+          expect(r.statut).toBe(503);
+          expect(JSON.stringify(r.corps)).not.toMatch(/panne simulée|127\.0\.0\.1/);
+          expect(
+            await compter(`SELECT count(*) n FROM utilisateur WHERE organisation_id=$1`, [orgId]),
+          ).toBe(n);
+        } finally {
+          kc.indisponible = false;
+        }
+      });
+
+      it('compte de service non configuré : 503 (échec fermé), pas de repli sur une autre identité', async () => {
+        const sauve = process.env.KEYCLOAK_SERVICE_CLIENT_SECRET;
+        delete process.env.KEYCLOAK_SERVICE_CLIENT_SECRET;
+        const s2 = await demarrer();
+        try {
+          const r = await appel(
+            'administrator',
+            'POST',
+            '/utilisateurs',
+            valide('n@example.test'),
+            s2,
+          );
+          expect(r.statut).toBe(503);
+        } finally {
+          process.env.KEYCLOAK_SERVICE_CLIENT_SECRET = sauve;
+          await s2.app.close();
+        }
+      });
+
+      it('mauvais secret du compte de service : refusé par Keycloak, donc 503', async () => {
+        const sauve = process.env.KEYCLOAK_SERVICE_CLIENT_SECRET;
+        process.env.KEYCLOAK_SERVICE_CLIENT_SECRET = 'mauvais';
+        const s2 = await demarrer();
+        try {
+          const r = await appel(
+            'administrator',
+            'POST',
+            '/utilisateurs',
+            valide('m@example.test'),
+            s2,
+          );
+          expect(r.statut).toBe(503);
+        } finally {
+          process.env.KEYCLOAK_SERVICE_CLIENT_SECRET = sauve;
+          await s2.app.close();
+        }
+      });
+
+      it('rattachement : le sub doit exister dans Keycloak ; inconnu = 422 ; doublon = 409 ; jamais soi-même', async () => {
+        const sub = randomUUID();
+        kc.utilisateurs.set(sub, { courriel: 'existant@example.test', roles: ['assistant'] });
+        const inconnu = await appel('administrator', 'POST', '/utilisateurs/rattachement', {
+          keycloak_sub: randomUUID(),
+          nom_complet: 'Inventé Fictif',
+        });
+        expect(inconnu.statut).toBe(422);
+        const ok = await appel('administrator', 'POST', '/utilisateurs/rattachement', {
+          keycloak_sub: sub,
+          nom_complet: 'Existant Fictif',
+        });
+        expect(ok.statut).toBe(201);
+        expect(
+          (
+            await appel('administrator', 'POST', '/utilisateurs/rattachement', {
+              keycloak_sub: sub,
+              nom_complet: 'Doublon',
+            })
+          ).statut,
+        ).toBe(409);
+        const soi = await appel('administrator', 'POST', '/utilisateurs/rattachement', {
+          keycloak_sub: acteurs.administrator.sub,
+          nom_complet: 'Moi-même',
+        });
+        expect(soi.statut).toBe(409);
+        expect(
+          (
+            await appel('assistant', 'POST', '/utilisateurs/rattachement', {
+              keycloak_sub: sub,
+              nom_complet: 'y',
+            })
+          ).statut,
+        ).toBe(403);
+        expect(
+          await compter(
+            `SELECT count(*) n FROM journal WHERE objet_id=$1 AND action='utilisateur.rattacher'`,
+            [ok.corps.id],
+          ),
+        ).toBe(1);
+      });
+
+      it('la base refuse un nom vide même si l’API était contournée (contrainte, lot 2)', async () => {
+        await expect(
+          appBase.query(
+            `INSERT INTO utilisateur (organisation_id, keycloak_sub, nom_complet) VALUES ($1,$2,'  ')`,
+            [orgId, `${MARQUE}-vide`],
+          ),
+        ).rejects.toMatchObject({ code: '23514' });
+      });
     });
   });
 
-  describe('visiteurs (US-05-029, DEC-19 ouverte)', () => {
-    it('l’assistant crée un visiteur ; la réception ne le peut pas (matrice provisoire) mais le recherche', async () => {
+  describe('visiteurs (US-05-029, DEC-19 tranchée le 19/10)', () => {
+    it('la Réception crée une fiche minimale (identité, contact) ; la qualification lui est refusée par le serveur', async () => {
+      const refus = await appel('reception', 'POST', '/visiteurs', {
+        nom_complet: 'Fiche Réception fictive',
+        qualite: 'Titre fictif',
+      });
+      expect(refus.statut).toBe(400);
+      expect(refus.corps.erreurs.map((e: { champ: string }) => e.champ)).toEqual(['qualite']);
+      const ok = await appel('reception', 'POST', '/visiteurs', {
+        nom_complet: 'Fiche Réception fictive',
+        contact: 'reception@exemple.invalid',
+      });
+      expect(ok.statut).toBe(201);
+      expect(ok.corps.qualite).toBeNull();
+      const j = await admin.query(
+        `SELECT utilisateur_id, contexte FROM journal WHERE objet_id=$1 AND action='visiteur.creer'`,
+        [ok.corps.id],
+      );
+      expect(j.rows).toHaveLength(1);
+      expect(j.rows[0]!.utilisateur_id).toBe(acteurs.reception.id);
+      expect(JSON.stringify(j.rows[0]!.contexte)).not.toContain('Réception fictive');
+    });
+    it('l’Autorité crée un visiteur avec qualification ; l’Administrateur ne crée pas de visiteur', async () => {
+      const r = await appel('authority', 'POST', '/visiteurs', {
+        nom_complet: 'Fiche Autorité fictive',
+        qualite: 'Titre fictif',
+      });
+      expect(r.statut).toBe(201);
       expect(
-        (await appel('reception', 'POST', '/visiteurs', { nom_complet: 'Fictif Visiteur' })).statut,
+        (await appel('administrator', 'POST', '/visiteurs', { nom_complet: 'Fiche fictive' }))
+          .statut,
       ).toBe(403);
+    });
+    it('l’assistant crée un visiteur qualifié ; la réception le retrouve par la recherche', async () => {
       const r = await appel('assistant', 'POST', '/visiteurs', {
         nom_complet: `Visiteur ${MARQUE}`,
         contact: 'contact@exemple.invalid',
@@ -327,9 +556,7 @@ describe('API métier sur PostgreSQL réel', () => {
       });
       expect(inconnu.statut).toBe(400);
     });
-    it('refuse la création par un rôle sans droit (appel direct hors interface)', async () => {
-      expect((await appel('assistant', 'POST', '/demandes', corpsValide())).statut).toBe(403);
-      expect((await appel('authority', 'POST', '/demandes', corpsValide())).statut).toBe(403);
+    it('refuse la création à l’Administrateur (matrice : « — »), appel direct hors interface', async () => {
       expect((await appel('administrator', 'POST', '/demandes', corpsValide())).statut).toBe(403);
     });
     it('liste, filtre et pagine ; consultation individuelle ; 404 et 400', async () => {
@@ -380,7 +607,7 @@ describe('API métier sur PostgreSQL réel', () => {
         );
       expect((await appel('reception', 'PATCH', `/demandes/${demandeId}`, {})).statut).toBe(400);
       expect(
-        (await appel('authority', 'PATCH', `/demandes/${demandeId}`, { objet: 'x' })).statut,
+        (await appel('administrator', 'PATCH', `/demandes/${demandeId}`, { objet: 'x' })).statut,
       ).toBe(403);
     });
     it('on ne peut pas retirer le contact sans dérogation', async () => {
@@ -392,7 +619,7 @@ describe('API métier sur PostgreSQL réel', () => {
       });
       expect(ok.statut).toBe(200);
     });
-    it('qualification initiale par la réception, une seule fois ; l’autorité ne qualifie pas ; aucune décision', async () => {
+    it('qualification (Réception : initiale seulement), une seule fois ; l’Administrateur ne qualifie pas ; aucune décision', async () => {
       const q = await appel('reception', 'POST', `/demandes/${demandeId}/qualification`, {
         qualification: 'Demande recevable (fictif)',
       });
@@ -407,11 +634,19 @@ describe('API métier sur PostgreSQL réel', () => {
       ).toBe(409);
       expect(
         (
-          await appel('authority', 'POST', `/demandes/${demandeId}/qualification`, {
+          await appel('administrator', 'POST', `/demandes/${demandeId}/qualification`, {
             qualification: 'x',
           })
         ).statut,
       ).toBe(403);
+      // L'Autorité peut qualifier (matrice : P) mais la demande l'est déjà.
+      expect(
+        (
+          await appel('authority', 'POST', `/demandes/${demandeId}/qualification`, {
+            qualification: 'bis autorité',
+          })
+        ).statut,
+      ).toBe(409);
       expect(
         (
           await appel('reception', 'POST', `/demandes/${demandeId}/decision`, {
@@ -514,13 +749,42 @@ describe('API métier sur PostgreSQL réel', () => {
       expect(rej.corps.statut_demande).toBe('rejetee');
       expect(
         (
-          await appel('assistant', 'POST', '/audiences', {
+          await appel('authority', 'POST', '/audiences', {
             demande_id: a.corps.id,
             debut_prevu: '2026-11-02T09:00:00Z',
             duree_prevue_minutes: 30,
           })
         ).statut,
       ).toBe(409);
+      (globalThis as Record<string, unknown>).__demandeRejetee = a.corps.id;
+    });
+    it('Réception : une demande rejetée apparaît « non retenue », sans motif ni auteur (arbitrage du 19/10, serveur)', async () => {
+      const id = (globalThis as Record<string, unknown>).__demandeRejetee as string;
+      const d = await appel('reception', 'GET', `/demandes/${id}`);
+      expect(d.statut).toBe(200);
+      expect(d.corps.statut).toBe('non_retenue');
+      expect(d.corps.decisions).toBeUndefined();
+      expect(d.corps.audience).toBeUndefined();
+      const brut = JSON.stringify(d.corps);
+      expect(brut).not.toContain('rejetee'); // l'objet saisi (« À rejeter ») reste, lui, visible
+      expect(brut).not.toContain('Hors périmètre'); // motif
+      expect(brut).not.toContain('Fictif authority'); // auteur de la décision
+      // La liste projette de même ; filtrer sur « rejetee » est refusé, sur le statut neutre accepté.
+      const l = await appel('reception', 'GET', '/demandes?limite=100');
+      const ligne = l.corps.elements.find((e: { id: string }) => e.id === id);
+      expect(ligne.statut).toBe('non_retenue');
+      expect(JSON.stringify(l.corps)).not.toContain('rejetee');
+      expect((await appel('reception', 'GET', '/demandes?statut=rejetee')).statut).toBe(400);
+      const f = await appel('reception', 'GET', '/demandes?statut=non_retenue&limite=100');
+      expect(f.statut).toBe(200);
+      expect(f.corps.elements.map((e: { id: string }) => e.id)).toContain(id);
+      // Un message d'erreur ne révèle pas non plus l'issue.
+      const m = await appel('reception', 'PATCH', `/demandes/${id}`, { objet: 'x' });
+      expect(m.statut).toBe(409);
+      expect(JSON.stringify(m.corps)).not.toContain('rejetee');
+      // L'Assistant et l'Autorité gardent le statut réel ; le statut neutre ne leur est pas connu.
+      expect((await appel('assistant', 'GET', `/demandes/${id}`)).corps.statut).toBe('rejetee');
+      expect((await appel('authority', 'GET', '/demandes?statut=non_retenue')).statut).toBe(400);
     });
     it('la base interdit à l’application de modifier ou supprimer une décision', async () => {
       await expect(appBaseQuery(`UPDATE decision SET motif='x'`)).rejects.toMatchObject({
@@ -539,37 +803,37 @@ describe('API métier sur PostgreSQL réel', () => {
     let demandeId: string;
     const debut = '2026-11-02T09:00:00Z';
 
-    it('seul l’assistant planifie, uniquement une demande validée, avec dates valides', async () => {
+    it('seule l’Autorité planifie (l’Assistant : D, refusé sans délégation), uniquement une demande validée, avec dates valides', async () => {
       demandeId = (globalThis as Record<string, unknown>).__demandeId as string;
       const corps = { demande_id: demandeId, debut_prevu: debut, duree_prevue_minutes: 45 };
-      for (const q of ['reception', 'authority', 'administrator'] as const)
+      for (const q of ['reception', 'assistant', 'administrator'] as const)
         expect((await appel(q, 'POST', '/audiences', corps)).statut).toBe(403);
       expect(
         (
-          await appel('assistant', 'POST', '/audiences', {
+          await appel('authority', 'POST', '/audiences', {
             ...corps,
             debut_prevu: '2026-11-02 09:00',
           })
         ).statut,
       ).toBe(400);
       expect(
-        (await appel('assistant', 'POST', '/audiences', { ...corps, duree_prevue_minutes: 0 }))
+        (await appel('authority', 'POST', '/audiences', { ...corps, duree_prevue_minutes: 0 }))
           .statut,
       ).toBe(400);
       expect(
-        (await appel('assistant', 'POST', '/audiences', { ...corps, demande_id: randomUUID() }))
+        (await appel('authority', 'POST', '/audiences', { ...corps, demande_id: randomUUID() }))
           .statut,
       ).toBe(404);
-      const r = await appel('assistant', 'POST', '/audiences', corps);
+      const r = await appel('authority', 'POST', '/audiences', corps);
       expect(r.statut).toBe(201);
       expect(r.corps.statut).toBe('planifiee');
       expect(r.corps.agenda_id).toBe(agendaId);
-      expect(r.corps.responsable_suivi_id).toBe(acteurs.assistant.id);
+      expect(r.corps.responsable_suivi_id).toBe(acteurs.authority.id);
       audienceId = r.corps.id;
-      expect((await appel('assistant', 'GET', `/demandes/${demandeId}`)).corps.statut).toBe(
+      expect((await appel('authority', 'GET', `/demandes/${demandeId}`)).corps.statut).toBe(
         'planifiee',
       );
-      expect((await appel('assistant', 'POST', '/audiences', corps)).statut).toBe(409);
+      expect((await appel('authority', 'POST', '/audiences', corps)).statut).toBe(409);
     });
     it('planning d’un agenda sur une période', async () => {
       const dans = await appel(
@@ -593,7 +857,7 @@ describe('API métier sur PostgreSQL réel', () => {
         (await appel('assistant', 'POST', `/audiences/${audienceId}/terminer`, { resultat: 'x' }))
           .statut,
       ).toBe(409);
-      expect((await appel('authority', 'POST', `/audiences/${audienceId}/demarrer`)).statut).toBe(
+      expect((await appel('reception', 'POST', `/audiences/${audienceId}/demarrer`)).statut).toBe(
         403,
       );
       const d = await appel('assistant', 'POST', `/audiences/${audienceId}/demarrer`);
@@ -617,55 +881,49 @@ describe('API métier sur PostgreSQL réel', () => {
         'realisee',
       );
     });
-    it('la clôture est refusée à TOUS les rôles tant que H4 n’est pas tranchée, sans effet de bord', async () => {
-      for (const q of ['reception', 'assistant', 'authority', 'administrator'] as const)
+    it('la clôture est refusée à la Réception et à l’Administrateur, sans effet de bord', async () => {
+      for (const q of ['reception', 'administrator'] as const)
         expect((await appel(q, 'POST', `/audiences/${audienceId}/cloturer`)).statut).toBe(403);
       const a = await appel('assistant', 'GET', `/audiences/${audienceId}`);
       expect(a.corps.statut).toBe('terminee');
       expect(a.corps.cloturee_le).toBeNull();
     });
-    it('la logique de clôture, avec une matrice d’ESSAI qui désigne un responsable : conservation 5 ans', async () => {
-      const essai: Matrice = {
-        ...MATRICE_PROVISOIRE,
-        actions: {
-          ...MATRICE_PROVISOIRE.actions,
-          'audience.cloturer': {
-            roles: ['assistant'],
-            source: 'MATRICE D’ESSAI de test, pas une décision métier',
-          },
-        },
-      };
-      const s2 = await demarrer(essai);
-      try {
-        const c = await appel(
-          'assistant',
-          'POST',
-          `/audiences/${audienceId}/cloturer`,
-          undefined,
-          s2,
-        );
-        expect(c.statut).toBe(200);
-        expect(c.corps.statut).toBe('cloturee');
-        const attendu = (
-          await admin.query<{ d: string }>(
-            `SELECT ((SELECT cloturee_le FROM audience WHERE id=$1) + interval '5 years')::date::text AS d`,
-            [audienceId],
-          )
-        ).rows[0]!.d;
-        expect(c.corps.conservation_echeance).toBe(attendu);
-        expect(
-          (await appel('assistant', 'POST', `/audiences/${audienceId}/cloturer`, undefined, s2))
-            .statut,
-        ).toBe(409);
-        const d = await appel('authority', 'GET', `/demandes/${demandeId}`, undefined, s2);
-        expect(d.corps.statut).toBe('cloturee');
-        // Chaîne Demande → Décisions → Audience (US-05-017), y compris objet clos.
-        expect(d.corps.decisions.length).toBe(2);
-        expect(d.corps.audience.id).toBe(audienceId);
-        expect(d.corps.audience.statut).toBe('cloturee');
-      } finally {
-        await s2.app.close();
-      }
+    it('l’Assistant clôture (arbitrage du 19/10) : conservation de 5 ans, trace nominative, chaîne complète lisible', async () => {
+      const c = await appel('assistant', 'POST', `/audiences/${audienceId}/cloturer`);
+      expect(c.statut).toBe(200);
+      expect(c.corps.statut).toBe('cloturee');
+      // Trace de clôture : auteur nominatif, identifiants et durées ; jamais le texte du résultat.
+      const j = await admin.query(
+        `SELECT utilisateur_id, contexte FROM journal WHERE objet_id=$1 AND action='audience.cloturer'`,
+        [audienceId],
+      );
+      expect(j.rows).toHaveLength(1);
+      expect(j.rows[0]!.utilisateur_id).toBe(acteurs.assistant.id);
+      expect(j.rows[0]!.contexte).toEqual({
+        demande_id: demandeId,
+        duree_prevue_minutes: 45,
+        duree_reelle_minutes: c.corps.duree_reelle_minutes,
+      });
+      expect(JSON.stringify(j.rows[0]!.contexte)).not.toContain('Entretien');
+      const attendu = (
+        await admin.query<{ d: string }>(
+          `SELECT ((SELECT cloturee_le FROM audience WHERE id=$1) + interval '5 years')::date::text AS d`,
+          [audienceId],
+        )
+      ).rows[0]!.d;
+      expect(c.corps.conservation_echeance).toBe(attendu);
+      expect((await appel('assistant', 'POST', `/audiences/${audienceId}/cloturer`)).statut).toBe(
+        409,
+      );
+      const d = await appel('authority', 'GET', `/demandes/${demandeId}`);
+      expect(d.corps.statut).toBe('cloturee');
+      // Chaîne Demande → Décisions → Audience (US-05-017), y compris objet clos.
+      expect(d.corps.decisions.length).toBe(2);
+      expect(d.corps.audience.id).toBe(audienceId);
+      // Responsable de suivi de l'AUDIENCE (par défaut : qui a planifié, ici l'Autorité), pas celui de la demande.
+      expect(d.corps.audience.responsable_suivi_id).toBe(acteurs.authority.id);
+      expect(d.corps.audience.responsable_suivi_nom).toBe('Fictif authority');
+      expect(d.corps.audience.statut).toBe('cloturee');
     });
   });
 
@@ -679,15 +937,36 @@ describe('API métier sur PostgreSQL réel', () => {
         'demande.creer',
         'demande.modifier',
         'demande.modifier',
-        'demande.qualifier_initialement',
+        'demande.qualifier',
         'decision.differer',
         'decision.valider',
       ]);
       expect(r.corps.elements[0].utilisateur_nom).toBe('Fictif authority');
       expect((await appel('assistant', 'GET', '/journal')).statut).toBe(403);
+      // Administrateur : « D » dans la matrice, donc refusé tant qu'aucune délégation n'existe.
+      expect((await appel('administrator', 'GET', '/journal')).statut).toBe(403);
       expect((await appel('autreOrg', 'GET', `/journal?objet_id=${id}`)).corps.elements).toEqual(
         [],
       );
+    });
+    it('exhaustivité : chaque action de mutation inventoriée a produit au moins une entrée attribuée à une personne', async () => {
+      const { rows } = await admin.query<{ action: string; n: number; sans_auteur: number }>(
+        `SELECT action, count(*)::int AS n, count(*) FILTER (WHERE utilisateur_id IS NULL)::int AS sans_auteur
+           FROM journal WHERE organisation_id=$1 GROUP BY action`,
+        [orgId],
+      );
+      const vues = new Map(rows.map((r) => [r.action, r]));
+      for (const [route, actions] of Object.entries(MUTATIONS_JOURNALISEES))
+        // La décision peut prendre trois formes ; au moins une doit avoir été exercée par la suite.
+        expect(
+          actions.some((a) => (vues.get(a)?.n ?? 0) > 0),
+          `aucune entrée de journal pour ${route} (${actions.join(', ')})`,
+        ).toBe(true);
+      for (const r of rows) expect(r.sans_auteur, r.action).toBe(0);
+      // Aucune entrée ne porte une action absente de l'inventaire (action écrite en cachette).
+      const connues = new Set(Object.values(MUTATIONS_JOURNALISEES).flat());
+      for (const r of rows)
+        expect(connues.has(r.action), `action hors inventaire : ${r.action}`).toBe(true);
     });
     it('chaque entrée porte auteur, organisation et horodatage de la base', async () => {
       const { rows } = await admin.query(

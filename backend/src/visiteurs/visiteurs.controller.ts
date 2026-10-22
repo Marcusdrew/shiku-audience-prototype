@@ -29,6 +29,13 @@ export class VisiteursController {
     return { elements: rows, limite, decalage };
   }
 
+  /**
+   * Arbitrage du 19/10/2026 (DEC-19) : Réception, Assistant et Autorité créent un visiteur. La Réception
+   * ne saisit que l'identité minimale et le contact ; la qualification (champ `qualite`) reste à
+   * l'Assistant, ou à l'Autorité. Contrôlé ici, côté serveur, et non par l'affichage.
+   * La recherche préalable de doublon est guidée par l'interface ; son caractère bloquant n'est pas
+   * décidé (question Q-12) et n'est donc pas imposé par le serveur.
+   */
   @Post()
   @ExigeDroit('visiteur.creer')
   async creer(@ContexteCourant() ctx: Contexte, @Body() corps: unknown) {
@@ -36,6 +43,12 @@ export class VisiteursController {
     const nom = v.texte('nom_complet', { requis: true, max: 200 });
     const contact = v.texte('contact', { max: 300 });
     const qualite = v.texte('qualite', { max: 200 });
+    const qualifie = ctx.identite.roles.some((r) => r === 'assistant' || r === 'authority');
+    if (qualite !== null && !qualifie)
+      v.erreur(
+        'qualite',
+        'La qualification du visiteur est réservée à l’Assistant ou à l’Autorité.',
+      );
     v.fin();
     return enTransaction(this.pool, async (c) => {
       const { rows } = await c.query<{ id: string }>(
