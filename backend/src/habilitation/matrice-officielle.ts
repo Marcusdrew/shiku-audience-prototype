@@ -260,12 +260,13 @@ export const MATRICE_OFFICIELLE: Matrice = {
       roles: ['authority', 'assistant'],
       delegues: ['protocole'],
       source:
-        'Arbitrage de M. Jordan du 19/10/2026 (ACTE-ARB-2026-10-19, signature à apposer) : ' +
-        'l’Assistant ou l’Autorité clôt directement, sans validation distincte ; clôture irréversible, ' +
-        'elle ouvre la conservation de 5 ans (D04-06)',
-      // Les rôles sont décidés. Restent ouverts : la ligne de matrice citée par l'arbitrage (absente de
-      // la matrice Gate 02A reçue) et la clôture par le Protocole sous délégation (inactive).
-      hypothese: 'Q-13 (source matricielle, Protocole délégué)',
+        'Gate 02A : Démarrer / terminer audience (P pour l’Assistant), précisé par M. Jordan le ' +
+        '22/10/2026 (réponse à Q-13) ; arbitrage du 19/10/2026 (ACTE-ARB-2026-10-19) : l’Assistant ou ' +
+        'l’Autorité clôt directement, sans validation distincte ; clôture irréversible, elle ouvre la ' +
+        'conservation de 5 ans (D04-06)',
+      // L'Assistant clôt sans délégation (droit P de la ligne « Démarrer / terminer audience »). La
+      // délégation ne concerne que le Protocole et la rectification, toutes deux inactives.
+      hypothese: 'HYPOTHESE(DEC-33) : clôture, règle provisoire du 22/10/2026 (acte non signé)',
       limites:
         'Conditions : audience démarrée et terminée, résultat saisi, durée réelle et responsable ' +
         'de suivi renseignés. Rectification et motif d’écart : non développés.',

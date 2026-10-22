@@ -25,7 +25,7 @@ Les routes ci-dessous sont des **propositions** pour dimensionner le travail, no
 | Agendas / audiences | `GET /agendas`, `GET /agendas/:id/planning`, `POST/PATCH /audiences` | agenda, période ou séquence, durée, motif de report/annulation | Administrateur pour l'administration des agendas ; règle de visibilité (EF03-24) | conflit de créneau signalé non bloquant (US-05-052) |
 | Opérations du jour | `GET /operations/jour`, arrivées, appels, début/fin d'audience | états arrivé, en attente, appelé, absent, sorti (EF03-11) | Réception : accueil seulement ; Assistant : appel | transitions horodatées |
 | Dossiers relationnels | visiteurs, dossier, notes, signalement, revue | notes en texte libre, attestation, signalement (EF03-18 à 20) | Réception exclue ; consultation journalisée | alerte de saisie, passage outre tracé (D04-05) |
-| Administration | utilisateurs, délégations | délégation programmée (EF03-25) | Administrateur seul ; pas d'auto-attribution | journal inaltérable (ENF03-12) |
+| Administration | utilisateurs, délégations | délégation programmée (EF03-25) | Administrateur seul ; pas d'auto-attribution | journal protégé contre la modification et la suppression (ENF03-12) |
 | Tableau de bord | `GET /pilotage/indicateurs` | cinq familles d'EF03-17 | agrégats calculés côté serveur après évaluation des droits (US-05-059) | périmètre par rôle |
 
 ## Décisions humaines nécessaires (non tranchées ici)

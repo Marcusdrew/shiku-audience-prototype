@@ -39,7 +39,7 @@ Rédigé le 14 octobre 2026. Ce document dit ce qui existe, ce qui a été **ré
 
 ## 4. Restant, par ordre suggéré
 
-1. Décisions métier : arbitrages du 19/10 appliqués pour la création des visiteurs, la clôture, le statut neutre de la Réception et la liste blanche des rôles ; restent ouverts : catégories du journal (Q-1), périmètre de l'Autorité (Q-10), réinitialisation de mot de passe (Q-6 à Q-8), H13, H14, DEC-16.
+1. Décisions métier : arbitrages du 19/10 appliqués pour la création des visiteurs, la clôture, le statut neutre de la Réception et la liste blanche des rôles ; décidés le 22/10 mais non développés (lots L1 à L7, voir `HYPOTHESES.md`) : catégories du journal (Q-1), périmètre de l'Autorité (Q-10), réinitialisation de mot de passe (Q-6 à Q-8), doublons de visiteurs (Q-12), motif d'écart et rectification (Q-13), priorité à six critères ; restent ouverts : Q-3, Q-5, Q-15, H13, H14, DEC-16.
 2. Priorité à six critères et son changement justifié (US-05-041/042) : exige des seuils chiffrés (Gate 08).
 3. Catégorie protocolaire, reprogrammation, annulation (conservation 2 ans, AUD-28), urgence.
 4. Accueil : arrivée, attente, appel, absence (US-05-053 à 055, 062).
