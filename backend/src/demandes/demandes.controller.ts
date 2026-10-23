@@ -27,12 +27,15 @@ const COLONNES = `d.id, d.reference, d.statut, d.objet, d.contact, d.derogation,
   d.visiteur_id, v.nom_complet AS visiteur_nom,
   d.agenda_id, a.nom AS agenda_nom,
   d.responsable_suivi_id, r.nom_complet AS responsable_suivi_nom,
-  d.cree_par, c.nom_complet AS cree_par_nom`;
+  d.cree_par, c.nom_complet AS cree_par_nom,
+  d.rang_protocolaire, d.urgence, d.importance_strategique, d.relation, d.criteres_saisis_le,
+  d.priorite, d.priorite_fixee_le, d.priorite_justification, pf.nom_complet AS priorite_fixee_par_nom`;
 const JOINTURES = `FROM demande d
   JOIN visiteur v ON v.id = d.visiteur_id
   JOIN agenda a ON a.id = d.agenda_id
   JOIN utilisateur r ON r.id = d.responsable_suivi_id
-  JOIN utilisateur c ON c.id = d.cree_par`;
+  JOIN utilisateur c ON c.id = d.cree_par
+  LEFT JOIN utilisateur pf ON pf.id = d.priorite_fixee_par`;
 
 /**
  * Arbitrage de M. Jordan du 19/10/2026 (point 7) : la Réception voit un statut NEUTRE pour une
@@ -61,9 +64,14 @@ export class DemandesController {
   }
 
   private projeter<T extends Record<string, unknown>>(ctx: Contexte, ligne: T): T {
-    if (this.statutNeutre(ctx) && ligne.statut === 'rejetee')
-      return { ...ligne, statut: STATUT_NEUTRE_REJET };
-    return ligne;
+    if (!this.statutNeutre(ctx)) return ligne;
+    // Critères et niveau de priorité restent visibles (DEC-37) ; la justification et son auteur
+    // relèvent de la décision, comme le motif : pas pour la Réception.
+    const copie: Record<string, unknown> = { ...ligne };
+    delete copie.priorite_justification;
+    delete copie.priorite_fixee_par_nom;
+    if (copie.statut === 'rejetee') copie.statut = STATUT_NEUTRE_REJET;
+    return copie as T;
   }
 
   private async chargerVerrouillee(c: PoolClient, ctx: Contexte, id: string) {

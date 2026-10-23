@@ -15,6 +15,8 @@ export const MUTATIONS_JOURNALISEES: Readonly<Record<string, readonly string[]>>
   'demandes creer': ['demande.creer'],
   'demandes modifier': ['demande.modifier'],
   'demandes qualifier': ['demande.qualifier'],
+  '/ criteres': ['demande.saisir_criteres'],
+  '/ priorite': ['demande.changer_priorite'],
   '/ decider': ['decision.valider', 'decision.rejeter', 'decision.differer'],
   'audiences planifier': ['audience.planifier'],
   'audiences demarrer': ['audience.demarrer'],

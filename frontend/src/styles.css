@@ -367,3 +367,6 @@ a {
   flex-wrap: wrap;
   gap: 0.4rem;
 }
+.contents {
+  display: contents;
+}

@@ -67,6 +67,16 @@ export interface Demande {
   agenda_nom: string;
   responsable_suivi_nom: string;
   cree_par_nom: string;
+  /** Critères de priorité (codes d'un référentiel, DEC-37) et niveau fixé. */
+  rang_protocolaire?: string | null;
+  urgence?: string | null;
+  importance_strategique?: string | null;
+  relation?: string | null;
+  priorite?: string | null;
+  priorite_fixee_le?: string | null;
+  /** Absents pour la Réception (comme le motif d'une décision). */
+  priorite_justification?: string | null;
+  priorite_fixee_par_nom?: string | null;
   decisions?: Decision[];
   audience?: AudienceResume | null;
 }
@@ -197,6 +207,26 @@ export const qualifierDemande = (j: J, id: string, qualification: string) =>
   envoyer<Demande>('POST', `/demandes/${id}/qualification`, j, { qualification });
 export const decider = (j: J, id: string, type: Decision['type'], motif: string) =>
   envoyer<Decision>('POST', `/demandes/${id}/decision`, j, { type, motif });
+export const CRITERES_PRIORITE = [
+  'rang_protocolaire',
+  'urgence',
+  'importance_strategique',
+  'relation',
+] as const;
+export type CriterePriorite = (typeof CRITERES_PRIORITE)[number];
+export type ReferentielPriorite = Record<
+  'niveau' | CriterePriorite,
+  { code: string; libelle: string; rang: number }[]
+>;
+export const lireReferentielPriorite = (j: J, s?: AbortSignal) =>
+  get<ReferentielPriorite>('/priorite/referentiel', j, s);
+export const saisirCriteres = (j: J, id: string, corps: Partial<Record<CriterePriorite, string>>) =>
+  envoyer<unknown>('PATCH', `/demandes/${id}/criteres`, j, corps);
+export const fixerPriorite = (
+  j: J,
+  id: string,
+  corps: { niveau: string; justification?: string },
+) => envoyer<unknown>('POST', `/demandes/${id}/priorite`, j, corps);
 export const fileDecisions = (j: J, s?: AbortSignal) =>
   get<Liste<Demande>>('/decisions/file', j, s);
 export const planifierAudience = (

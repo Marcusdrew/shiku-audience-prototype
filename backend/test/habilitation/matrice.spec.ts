@@ -83,6 +83,7 @@ describe('matrice officielle (Gate 02A)', () => {
       'audience.consulter',
       'decision.consulter',
       'demande.modifier',
+      'demande.saisir_criteres',
       'visiteur.creer',
       'visiteur.modifier',
     ]);
@@ -162,6 +163,17 @@ describe('matrice officielle (Gate 02A)', () => {
       expect(s.estAutorise([r], 'agenda.autoriser_rattachement'), r).toBe(false);
     expect(s.estAutorise(['administrator'], 'agenda.administrer')).toBe(true);
     expect(s.estAutorise(['authority'], 'agenda.administrer')).toBe(false);
+  });
+
+  it('priorité (DEC-37) : l’Assistant saisit les critères mais ne fixe pas le niveau sans délégation', () => {
+    const s = new HabilitationService(MATRICE_OFFICIELLE);
+    for (const r of ['assistant', 'authority'] as const)
+      expect(s.estAutorise([r], 'demande.saisir_criteres'), r).toBe(true);
+    for (const r of ['reception', 'administrator'] as const)
+      expect(s.estAutorise([r], 'demande.saisir_criteres'), r).toBe(false);
+    expect(s.estAutorise(['authority'], 'demande.changer_priorite')).toBe(true);
+    for (const r of ['assistant', 'reception', 'administrator'] as const)
+      expect(s.estAutorise([r], 'demande.changer_priorite'), r).toBe(false);
   });
 
   it('la clôture (arbitrage du 19/10) : Autorité et Assistant, pas la Réception ni l’Administrateur', () => {

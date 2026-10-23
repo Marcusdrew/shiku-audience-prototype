@@ -20,6 +20,7 @@ import { Badge, Card } from '../components/Card';
 import { Champ } from '../components/Champ';
 import { ErreurAction } from '../components/ErreurAction';
 import { ErrorState } from '../components/ErrorState';
+import { PrioriteCarte } from '../components/PrioriteCarte';
 import { Spinner } from '../components/Spinner';
 import { useAction } from '../components/useAction';
 import {
@@ -82,6 +83,7 @@ function Detail({ d, recharger }: { d: Demande; recharger: () => void }) {
           <dd>{d.qualification_initiale ?? '—'}</dd>
         </dl>
       </Card>
+      <PrioriteCarte d={d} recharger={recharger} />
 
       {peut('demande.qualifier') && d.statut === 'recue' && (
         <Qualification id={d.id} recharger={recharger} />

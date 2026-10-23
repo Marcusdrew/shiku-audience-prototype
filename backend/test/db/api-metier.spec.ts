@@ -1149,6 +1149,142 @@ describe('API métier sur PostgreSQL réel', () => {
     });
   });
 
+  describe('priorité à six critères (HYPOTHESE(DEC-37))', () => {
+    const creerDemande = async (objet: string) => {
+      const r = await appel('reception', 'POST', '/demandes', {
+        visiteur_id: visiteurId,
+        agenda_id: agendaId,
+        objet,
+        contact: 'priorite@exemple.invalid',
+      });
+      expect(r.statut).toBe(201);
+      return r.corps as { id: string; reference: string };
+    };
+
+    it('référentiel lisible ; trois niveaux provisoires par critère', async () => {
+      const r = await appel('reception', 'GET', '/priorite/referentiel');
+      expect(r.statut).toBe(200);
+      for (const k of [
+        'niveau',
+        'rang_protocolaire',
+        'urgence',
+        'importance_strategique',
+        'relation',
+      ])
+        expect(r.corps[k], k).toHaveLength(3);
+      expect(r.corps.niveau.map((x: { code: string }) => x.code)).toEqual([
+        'normale',
+        'elevee',
+        'critique',
+      ]);
+    });
+
+    it('l’Assistant saisit les critères (journalisés par codes) ; la Réception ne le peut pas ; valeur inconnue refusée', async () => {
+      const d = await creerDemande('Critères (fictif)');
+      expect(
+        (await appel('reception', 'PATCH', `/demandes/${d.id}/criteres`, { urgence: 'elevee' }))
+          .statut,
+      ).toBe(403);
+      const inconnu = await appel('assistant', 'PATCH', `/demandes/${d.id}/criteres`, {
+        urgence: 'extreme',
+      });
+      expect(inconnu.statut).toBe(400);
+      const ok = await appel('assistant', 'PATCH', `/demandes/${d.id}/criteres`, {
+        rang_protocolaire: 'eleve',
+        urgence: 'critique',
+        importance_strategique: 'normale',
+        relation: 'elevee',
+      });
+      expect(ok.statut).toBe(200);
+      const vue = await appel('reception', 'GET', `/demandes/${d.id}`);
+      expect(vue.corps).toMatchObject({
+        rang_protocolaire: 'eleve',
+        urgence: 'critique',
+        importance_strategique: 'normale',
+        relation: 'elevee',
+        priorite: null,
+      });
+      const j = await admin.query<{ contexte: Record<string, unknown>; utilisateur_id: string }>(
+        `SELECT contexte, utilisateur_id FROM journal WHERE objet_id=$1 AND action='demande.saisir_criteres'`,
+        [d.id],
+      );
+      expect(j.rows).toHaveLength(1);
+      expect(j.rows[0]!.utilisateur_id).toBe(acteurs.assistant.id);
+      expect(j.rows[0]!.contexte.urgence).toEqual({ de: null, vers: 'critique' });
+    });
+
+    it('le niveau est fixé par l’Autorité (pas par l’Assistant sans délégation) ; la file suit le niveau, puis la plus ancienne', async () => {
+      const ancienne = await creerDemande('Priorité ancienne (fictif)');
+      const recente = await creerDemande('Priorité récente (fictif)');
+      expect(
+        (
+          await appel('assistant', 'POST', `/demandes/${recente.id}/priorite`, {
+            niveau: 'critique',
+          })
+        ).statut,
+      ).toBe(403);
+      const fixe = await appel('authority', 'POST', `/demandes/${recente.id}/priorite`, {
+        niveau: 'critique',
+        justification: 'Urgence signalée par le cabinet (fictif)',
+      });
+      expect(fixe.statut).toBe(200);
+      const file = await appel('authority', 'GET', '/decisions/file?limite=100');
+      const ids: string[] = file.corps.elements.map((e: { id: string }) => e.id);
+      expect(ids.indexOf(recente.id)).toBeLessThan(ids.indexOf(ancienne.id));
+      // Égalité de niveau : la plus ancienne d'abord.
+      await appel('authority', 'POST', `/demandes/${ancienne.id}/priorite`, { niveau: 'critique' });
+      const file2 = await appel('authority', 'GET', '/decisions/file?limite=100');
+      const ids2: string[] = file2.corps.elements.map((e: { id: string }) => e.id);
+      expect(ids2.indexOf(ancienne.id)).toBeLessThan(ids2.indexOf(recente.id));
+      // Justification et auteur : visibles par l'Autorité, pas par la Réception.
+      const aut = await appel('authority', 'GET', `/demandes/${recente.id}`);
+      expect(aut.corps).toMatchObject({
+        priorite: 'critique',
+        priorite_justification: 'Urgence signalée par le cabinet (fictif)',
+        priorite_fixee_par_nom: 'Fictif authority',
+      });
+      const rec = await appel('reception', 'GET', `/demandes/${recente.id}`);
+      expect(rec.corps.priorite).toBe('critique');
+      expect(rec.corps.priorite_justification).toBeUndefined();
+      expect(rec.corps.priorite_fixee_par_nom).toBeUndefined();
+      const j = await admin.query<{ contexte: Record<string, unknown> }>(
+        `SELECT contexte FROM journal WHERE objet_id=$1 AND action='demande.changer_priorite'`,
+        [recente.id],
+      );
+      expect(j.rows[0]!.contexte).toEqual({ de: null, vers: 'critique', justifiee: true });
+      expect(
+        (await appel('authority', 'POST', `/demandes/${recente.id}/priorite`, { niveau: 'max' }))
+          .statut,
+      ).toBe(400);
+    });
+
+    it('hors périmètre (DEC-32) : une Autorité non rattachée ne fixe pas le niveau', async () => {
+      const a = await appel('administrator', 'POST', '/agendas', {
+        nom: `Agenda priorité ${MARQUE}`,
+        autorite_id: acteurs.autreAutorite.id,
+      });
+      await appel('autreAutorite', 'POST', `/rattachements/${a.corps.rattachement.id}/autoriser`);
+      await appel('administrator', 'POST', `/rattachements/${a.corps.rattachement.id}/appliquer`);
+      const d = await appel('reception', 'POST', '/demandes', {
+        visiteur_id: visiteurId,
+        agenda_id: a.corps.id,
+        objet: 'Priorité hors périmètre (fictif)',
+        contact: 'p@exemple.invalid',
+      });
+      expect(
+        (await appel('authority', 'POST', `/demandes/${d.corps.id}/priorite`, { niveau: 'elevee' }))
+          .statut,
+      ).toBe(403);
+      expect(
+        (
+          await appel('autreAutorite', 'POST', `/demandes/${d.corps.id}/priorite`, {
+            niveau: 'elevee',
+          })
+        ).statut,
+      ).toBe(200);
+    });
+  });
+
   describe('périmètre de l’Autorité par agenda (HYPOTHESE(DEC-32))', () => {
     let agendaAutre: string;
     let agendaLibre: string;

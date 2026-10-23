@@ -46,21 +46,24 @@ export class DecisionsController {
    * File des demandes en attente de décision, limitée aux agendas rattachés à l'Autorité qui consulte ;
    * pour l'Assistant, aux agendas rattachés à une Autorité (HYPOTHESE(DEC-32), en attendant le
    * périmètre par délégation). Les demandes d'un agenda sans rattachement sont dans la file « à rattacher »
-   * (`GET /demandes?a_rattacher=true`). Tri : chronologie seule (voir docs/dev/API.md).
+   * (`GET /demandes?a_rattacher=true`). Tri (HYPOTHESE(DEC-37)) : niveau de priorité FIXÉ par
+   * l'Autorité, puis la plus ancienne ; une demande sans niveau compte comme le niveau le plus bas.
+   * Aucune formule n'est calculée à partir des critères.
    */
   @Get('decisions/file')
   @ExigeDroit('decision.consulter')
   async file(@ContexteCourant() ctx: Contexte, @Query() q: Record<string, unknown>) {
     const { limite, decalage } = pagination(q);
     const { rows } = await this.pool.query(
-      `SELECT d.id, d.reference, d.statut, d.objet, d.cree_le, d.qualifiee_le,
+      `SELECT d.id, d.reference, d.statut, d.objet, d.cree_le, d.qualifiee_le, d.priorite,
               v.nom_complet AS visiteur_nom, a.nom AS agenda_nom
          FROM demande d JOIN visiteur v ON v.id = d.visiteur_id JOIN agenda a ON a.id = d.agenda_id
+         LEFT JOIN priorite_referentiel pr ON pr.critere = 'niveau' AND pr.code = d.priorite
         WHERE d.organisation_id = $1 AND d.statut = ANY($2::text[])
           AND EXISTS (SELECT 1 FROM rattachement_agenda r
                        WHERE r.organisation_id = d.organisation_id AND r.agenda_id = d.agenda_id
                          AND (NOT $6 OR r.autorite_id = $5) AND ${SQL_RATTACHEMENT_ACTIF})
-        ORDER BY d.cree_le ASC, d.reference ASC LIMIT $3 OFFSET $4`,
+        ORDER BY coalesce(pr.rang, 1) DESC, d.cree_le ASC, d.reference ASC LIMIT $3 OFFSET $4`,
       [
         ctx.organisationId,
         STATUTS_DECIDABLES,

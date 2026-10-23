@@ -16,7 +16,8 @@ Rédigé le 14 octobre 2026. Ce document dit ce qui existe, ce qui a été **ré
 | Clôture d'audience                                                                                              | oui : Autorité et Assistant (arbitrage du 19/10) | oui, avec confirmation (irréversible) | Trace : identifiants et durées. Rectification, motif d'écart, irréversibilité garantie en base : non développés |
 | Journal d'audit en ajout seul                                                                                   | oui                                       | oui (base réelle)                                                 | limites dans `JOURNAL.md` ; non « inaltérable »                          |
 | Frontend raccordé : demandes, décisions, agendas/planning, opérations, journal, administration                  | oui                                       | tests automatisés avec API simulée ; parcours API réel par script | pas d'essai manuel dans un navigateur                                    |
-| Priorité à six critères, catégorie protocolaire, reprogrammation, annulation, urgence                           | **non**                                   | —                                                                 | voir « Restant »                                                         |
+| Priorité à six critères (saisie, niveau fixé, tri de la file)                                                   | oui                                       | oui (base réelle)                                                 | DEC-37 (22/10, provisoire) : critères saisis par l'Assistant ou l'Autorité, niveau fixé par l'Autorité, aucune formule, référentiels provisoires à trois niveaux |
+| Catégorie protocolaire, reprogrammation, annulation, urgence | **non**                                   | —                                                                 | voir « Restant »                                                         |
 | Salle d'attente, appels, dossier relationnel, délégations, conservation/purge, alertes, tableau de bord, mobile | **non**                                   | —                                                                 | hors de ce lot                                                           |
 
 ## 2. Tests réellement exécutés (14 octobre 2026, environnement de développement de l'assistant, Linux)
@@ -40,7 +41,7 @@ Rédigé le 14 octobre 2026. Ce document dit ce qui existe, ce qui a été **ré
 ## 4. Restant, par ordre suggéré
 
 1. Décisions métier : arbitrages du 19/10 appliqués pour la création des visiteurs, la clôture, le statut neutre de la Réception et la liste blanche des rôles ; décidés le 22/10 mais non développés (lots L1 à L7, voir `HYPOTHESES.md`) : catégories du journal (Q-1), périmètre de l'Autorité (Q-10), réinitialisation de mot de passe (Q-6 à Q-8), doublons de visiteurs (Q-12), motif d'écart et rectification (Q-13), priorité à six critères ; restent ouverts : Q-3, Q-5, Q-15, H13, H14, DEC-16.
-2. Priorité à six critères et son changement justifié (US-05-041/042) : exige des seuils chiffrés (Gate 08).
+2. Priorité : la grille de pondération (formule) sera fixée avec l'Autorité, configurable et versionnée ; les valeurs des critères sont provisoires (DEC-37).
 3. Catégorie protocolaire, reprogrammation, annulation (conservation 2 ans, AUD-28), urgence.
 4. Accueil : arrivée, attente, appel, absence (US-05-053 à 055, 062).
 5. Délégations (US-05-005 à 009), conservation et purge (US-05-018 à 023), dossier relationnel, alertes sur le journal, tableau de bord.

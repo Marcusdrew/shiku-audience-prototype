@@ -200,6 +200,30 @@ attendre(
   "l’autorité voit la demande dans la file de décisions",
   f,
 );
+// DEC-37 : l'Assistant saisit les critères ; seule l'Autorité fixe le niveau ; aucune formule.
+const criteres = await appel("assistant", "PATCH", `/demandes/${id}/criteres`, {
+  urgence: "elevee",
+  rang_protocolaire: "eleve",
+});
+attendre(
+  criteres.statut === 200,
+  "l’assistant saisit les critères de priorité",
+  criteres,
+);
+await refuse(
+  appel("assistant", "POST", `/demandes/${id}/priorite`, {
+    niveau: "critique",
+  }),
+  "l’assistant ne fixe pas le niveau de priorité sans délégation (403)",
+);
+const niveau = await appel("authority", "POST", `/demandes/${id}/priorite`, {
+  niveau: "elevee",
+});
+attendre(
+  niveau.statut === 200,
+  "l’autorité fixe le niveau de priorité",
+  niveau,
+);
 const dec = await appel("authority", "POST", `/demandes/${id}/decision`, {
   type: "valider",
   motif: "Accord de principe (fictif)",
@@ -269,7 +293,8 @@ const j = await appel(
 const actions = (j.corps.elements ?? []).map((e) => e.action).reverse();
 attendre(
   j.statut === 200 &&
-    actions.join() === "demande.creer,demande.qualifier,decision.valider",
+    actions.join() ===
+      "demande.creer,demande.qualifier,demande.saisir_criteres,demande.changer_priorite,decision.valider",
   `le journal retrace les actes : ${actions.join(" → ")}`,
   j,
 );

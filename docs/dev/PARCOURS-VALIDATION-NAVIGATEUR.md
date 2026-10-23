@@ -16,7 +16,7 @@ Dans PowerShell, à la racine du dépôt :
 | 0.4 | `node --env-file=.env scripts/configurer-compte-service.mjs` puis `… --appliquer` | « fait : créer le client shiku-service » (voir `COMPTES-KEYCLOAK.md`) ; puis `docker compose restart app` |
 | 0.4 bis | `node --env-file=.env scripts/aligner-comptes-test.mjs` (puis `--appliquer` si « À FAIRE ») | 5 lignes `OK` : les comptes de test acceptent les mots de passe de `.env` (voir `COMPTES-KEYCLOAK.md`) |
 | 0.5 | `node --env-file=.env scripts/amorcer-donnees-test.mjs` | « OK : organisation …, 5 comptes rattachés, 2 agendas ; N rattachement(s) initial(aux) à l'Autorité » (N = agendas jamais rattachés ; 0 au lancement suivant) |
-| 0.6 | `node --env-file=.env scripts/verifier-parcours.mjs` | 37 lignes `OK` (30 avant L1, 33 avant L4), puis `RESULTAT : TOUT OK` (parcours par l'API, sans navigateur) |
+| 0.6 | `node --env-file=.env scripts/verifier-parcours.mjs` | 40 lignes `OK` (30 avant L1, 33 avant L4, 37 avant L6), puis `RESULTAT : TOUT OK` (parcours par l'API, sans navigateur) |
 | 0.7 | `pnpm dev:frontend` | Vite écoute sur `http://localhost:5173` |
 
 Si Keycloak n'écoute pas sur le port 8080 (`KEYCLOAK_PORT` de `.env`), créez `frontend/.env.local` avec `VITE_KEYCLOAK_URL=http://localhost:<KEYCLOAK_PORT>` avant 0.7. Le frontend appelle l'API par `/api` (proxy Vite vers `APP_PORT`).
@@ -50,7 +50,8 @@ Utilisez une **fenêtre de navigation privée par rôle** (ou « Se déconnecter
 | # | Action | Résultat attendu |
 |---|---|---|
 | 2.1 | Se connecter ; menu | Demandes, Décisions, Agendas, Opérations du jour, Répertoire des visiteurs, Journal ; pas d'Administration |
-| 2.2 | Décisions | La demande figure dans la file (ordre chronologique ; la priorité à six critères n'existe pas) |
+| 2.2 | Décisions | La demande figure dans la file (niveau de priorité fixé, puis la plus ancienne ; colonne « Priorité ») |
+| 2.2 bis | Ouvrir la fiche → carte « Priorité » | Six critères affichés ; « Fixer le niveau » → « Critique » avec une justification : « fixé par … » ; dans Décisions, la demande passe en tête |
 | 2.3 | Ouvrir la fiche ; sans motif | Boutons Valider, Rejeter, Différer **inactifs** |
 | 2.4 | Saisir un motif → « Valider » | Décision listée (« Validée par … ») ; carte « Planifier l'audience » |
 | 2.5 | Début prévu = aujourd'hui, dans quelques minutes ; durée 30 → « Planifier » | Carte « Audience » : statut « Planifiée », responsable de suivi de l'audience = l'Autorité |
@@ -62,6 +63,7 @@ Utilisez une **fenêtre de navigation privée par rôle** (ou « Se déconnecter
 |---|---|---|
 | 3.1 | Se connecter ; ouvrir la fiche de la demande | **Aucun** bouton de décision ni de planification (droits « D » sans délégation) |
 | 3.1 bis | Répertoire des visiteurs : rechercher le visiteur de 1.4 | Contact **en clair**, colonne Qualité ; « Modifier » → saisir une qualité → « Enregistrer la modification » : la qualité apparaît dans la liste |
+| 3.1 ter | Fiche de la demande → carte « Priorité » | Formulaire « Saisir les critères » (Urgence → « Élevée » enregistré) ; **pas** de formulaire de niveau |
 | 3.2 | Opérations du jour | L'audience du jour avec « Démarrer » |
 | 3.3 | « Démarrer » | Statut « En cours », champ « Résultat » |
 | 3.4 | Saisir un résultat → « Terminer » | Statut « Terminée » |
@@ -89,7 +91,7 @@ Le compte créé en 4.6 n'a pas de mot de passe : sans serveur de courriel, il s
 
 ## Ce qui est hors du parcours (non développé ou en attente de décision)
 
-Salle d'attente et appel des visiteurs, annulation et reprogrammation, délégations, dossier relationnel (notes, attestations), priorité à six critères, indicateurs du tableau de bord, restrictions du journal par catégorie (Q-1), périmètre de l'Autorité (Q-10), réinitialisation de mot de passe (Q-6 à Q-8). Voir `ETAT-FONCTIONNEL.md` et `HYPOTHESES.md`.
+Salle d'attente et appel des visiteurs, annulation et reprogrammation, délégations, dossier relationnel (notes, attestations), formule de priorité (non définie), indicateurs du tableau de bord, restrictions du journal par catégorie (Q-1), périmètre de l'Autorité (Q-10), réinitialisation de mot de passe (Q-6 à Q-8). Voir `ETAT-FONCTIONNEL.md` et `HYPOTHESES.md`.
 
 ## Déjà exécuté par l'assistant (environnement Linux, pas votre poste)
 

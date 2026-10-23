@@ -1,9 +1,10 @@
 import { useCallback } from 'react';
 import { Link } from 'react-router';
-import { fileDecisions } from '../api/metier';
+import { fileDecisions, lireReferentielPriorite } from '../api/metier';
 import { useRequete } from '../api/useRequete';
 import { useAuth } from '../auth/AuthContext';
 import { Badge, Card } from '../components/Card';
+import { libelleValeur } from '../components/PrioriteCarte';
 import { ErrorState } from '../components/ErrorState';
 import { Spinner } from '../components/Spinner';
 import { formaterDate, LIBELLES_STATUT, TON_STATUT } from '../lib/libelles';
@@ -11,6 +12,10 @@ import { formaterDate, LIBELLES_STATUT, TON_STATUT } from '../lib/libelles';
 export function DecisionsPage() {
   const { jeton } = useAuth();
   const r = useRequete(useCallback((s: AbortSignal) => fileDecisions(jeton, s), [jeton]));
+  const referentiel = useRequete(
+    useCallback((s: AbortSignal) => lireReferentielPriorite(jeton, s), [jeton]),
+  );
+  const ref = referentiel.etat === 'succes' ? referentiel.donnees : null;
   return (
     <>
       <h1>Décisions</h1>
@@ -29,6 +34,7 @@ export function DecisionsPage() {
                 <thead>
                   <tr>
                     <th>Rang</th>
+                    <th>Priorité</th>
                     <th>Référence</th>
                     <th>Visiteur</th>
                     <th>Objet</th>
@@ -40,6 +46,7 @@ export function DecisionsPage() {
                   {r.donnees.elements.map((d, i) => (
                     <tr key={d.id}>
                       <td>{i + 1}</td>
+                      <td>{d.priorite ? libelleValeur(ref, 'niveau', d.priorite) : 'Non fixée'}</td>
                       <td>
                         <Link to={`/demandes/${d.id}`}>{d.reference}</Link>
                       </td>
@@ -56,9 +63,10 @@ export function DecisionsPage() {
             </div>
           ))}
         <p className="note">
-          Ordre actuel : du plus ancien au plus récent (chronologie seule). La priorité à six
-          critères (US-05-041) n’est pas développée : aucun seuil chiffré n’est défini par les
-          documents.
+          Ordre : niveau de priorité fixé par l’Autorité, puis la demande la plus ancienne (une
+          demande sans niveau compte comme « Normale »). Aucune formule ne combine les six critères
+          (règle provisoire DEC-37). Seules les demandes des agendas qui vous sont rattachés
+          figurent ici.
         </p>
       </Card>
     </>

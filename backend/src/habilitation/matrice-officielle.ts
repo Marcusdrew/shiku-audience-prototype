@@ -74,7 +74,7 @@ export const MATRICE_OFFICIELLE: Matrice = {
       delegues: ['assistant'],
       source: 'Gate 02A : Changer priorité',
       limites: 'Justification, critères visibles et audit obligatoire.',
-      implementee: false,
+      implementee: true,
     },
     'audience.planifier': {
       roles: ['authority'],
@@ -238,6 +238,17 @@ export const MATRICE_OFFICIELLE: Matrice = {
       limites:
         'Nom, prénom, contact, qualification. Fusion de doublons hors MVP. Valeurs avant et après ' +
         'dans le journal : en attente de Q-5 (seuls les noms des champs sont tracés).',
+      implementee: true,
+    },
+    'demande.saisir_criteres': {
+      roles: ['authority', 'assistant'],
+      delegues: [],
+      source:
+        'Réponses de M. Jordan du 22/10/2026 (DEC-37) : « L’Assistant peut saisir les valeurs des ' +
+        'critères (c’est de la qualification). Fixer le niveau de priorité exige l’Autorité ou une délégation »',
+      hypothese:
+        'HYPOTHESE(DEC-37) : saisie des six critères de priorité, référentiels provisoires',
+      limites: 'Valeurs d’un référentiel ; aucune formule ; journalisé (codes).',
       implementee: true,
     },
     'agenda.autoriser_rattachement': {
