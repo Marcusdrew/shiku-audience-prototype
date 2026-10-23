@@ -1,0 +1,20 @@
+node_modules/
+dist/
+coverage/
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.log
+.DS_Store
+
+# pnpm est le seul gestionnaire de paquets (docs/dev/PREREQUIS.md) : un autre verrou serait concurrent.
+package-lock.json
+npm-shrinkwrap.json
+yarn.lock
+bun.lock
+bun.lockb
+
+# Fichiers temporaires de compilation TypeScript
+*.tsbuildinfo

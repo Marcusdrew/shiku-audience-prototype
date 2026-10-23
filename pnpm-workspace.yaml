@@ -1,0 +1,5 @@
+# Espace de travail pnpm : un seul pnpm-lock.yaml à la racine.
+# `frontend` est déclaré mais vide : le cadre n'est pas choisi (DEC-28, CONTRIBUTING § 6).
+packages:
+  - backend
+  - frontend

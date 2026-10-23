@@ -1,0 +1,23 @@
+{
+  "name": "shiku-audience-prototype",
+  "private": true,
+  "packageManager": "pnpm@12.10.1",
+  "engines": {
+    "node": ">=24 <25",
+    "pnpm": "12.10.1"
+  },
+  "scripts": {
+    "preinstall": "node -e \"if(!(process.env.npm_config_user_agent||'').startsWith('pnpm/')){console.error('Ce depot utilise pnpm 12.10.1 : lancez pnpm install (voir docs/dev/PREREQUIS.md).');process.exit(1)}\"",
+    "build": "pnpm -r --if-present build",
+    "test": "pnpm -r --if-present test",
+    "lint": "pnpm -r --if-present lint",
+    "format:check": "pnpm -r --if-present format:check",
+    "migrate:up": "pnpm --filter shiku-backend migrate:up",
+    "test:db": "pnpm --filter shiku-backend test:db",
+    "dev:frontend": "pnpm --filter shiku-frontend dev",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "doctor": "node scripts/doctor.mjs",
+    "test:scripts": "node --test \"scripts/*.test.mjs\"",
+    "scan:secrets": "node scripts/controles-commit.mjs arbre && node scripts/controles-commit.mjs historique"
+  }
+}

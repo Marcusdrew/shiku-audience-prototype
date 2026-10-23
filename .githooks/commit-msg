@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Refuse un message qui ne suit pas « type(portée): message » (CONTRIBUTING.md §3).
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+node scripts/controles-commit.mjs message "$1"

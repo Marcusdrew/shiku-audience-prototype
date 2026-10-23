@@ -1,0 +1,181 @@
+{
+  "realm": "shiku",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "bruteForceProtected": true,
+  "roles": {
+    "realm": [
+      {
+        "name": "reception",
+        "description": "Rôle SHIKU : reception"
+      },
+      {
+        "name": "assistant",
+        "description": "Rôle SHIKU : assistant"
+      },
+      {
+        "name": "authority",
+        "description": "Rôle SHIKU : authority"
+      },
+      {
+        "name": "administrator",
+        "description": "Rôle SHIKU : administrator"
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "shiku-web",
+      "name": "SHIKU web",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "protocol": "openid-connect",
+      "redirectUris": [
+        "http://localhost:5173/*"
+      ],
+      "webOrigins": [
+        "http://localhost:5173"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:5173/*"
+      },
+      "defaultClientScopes": [
+        "basic",
+        "web-origins",
+        "profile",
+        "roles",
+        "email"
+      ]
+    },
+    {
+      "clientId": "shiku-service",
+      "name": "SHIKU service (gestion des comptes par l'application)",
+      "description": "Compte de service réservé au backend. Ne se connecte jamais. Droits : gestion des utilisateurs et rôles seulement.",
+      "enabled": true,
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${KC_SERVICE_PASSWORD}",
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "protocol": "openid-connect",
+      "defaultClientScopes": [
+        "basic",
+        "roles"
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "reception.test",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "reception.test@example.test",
+      "firstName": "Réa",
+      "lastName": "Test-Accueil",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${KC_PASSWORD_RECEPTION}",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "reception"
+      ]
+    },
+    {
+      "username": "assistant1.test",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "assistant1.test@example.test",
+      "firstName": "Alex",
+      "lastName": "Test-Assistant-1",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${KC_PASSWORD_ASSISTANT1}",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "assistant"
+      ]
+    },
+    {
+      "username": "assistant2.test",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "assistant2.test@example.test",
+      "firstName": "Alex",
+      "lastName": "Test-Assistant-2",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${KC_PASSWORD_ASSISTANT2}",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "assistant"
+      ]
+    },
+    {
+      "username": "authority.test",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "authority.test@example.test",
+      "firstName": "Aude",
+      "lastName": "Test-Autorité",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${KC_PASSWORD_AUTHORITY}",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "authority"
+      ]
+    },
+    {
+      "username": "admin.test",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "admin.test@example.test",
+      "firstName": "Adam",
+      "lastName": "Test-Admin",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${KC_PASSWORD_ADMIN}",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "administrator"
+      ]
+    },
+    {
+      "username": "service-account-shiku-service",
+      "enabled": true,
+      "serviceAccountClientId": "shiku-service",
+      "clientRoles": {
+        "realm-management": [
+          "manage-users",
+          "query-users",
+          "view-users"
+        ]
+      }
+    }
+  ]
+}

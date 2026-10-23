@@ -1,0 +1,18 @@
+* text=auto
+# Fins de ligne : LF partout dans le dépôt (Prettier et la CI l'exigent). Sans ces lignes, un
+# checkout Windows (CRLF) fait échouer format:check et les scripts shell (audit du 14/10/2026).
+# Après avoir tiré cette modification : git add --renormalize .  puis relire le diff.
+*.ts text eol=lf
+*.tsx text eol=lf
+*.js text eol=lf
+*.css text eol=lf
+*.html text eol=lf
+*.md text eol=lf
+.env.example text eol=lf
+.githooks/* text eol=lf
+*.sh text eol=lf
+*.mjs text eol=lf
+*.json text eol=lf
+*.sql text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
