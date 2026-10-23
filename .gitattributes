@@ -16,3 +16,4 @@
 *.sql text eol=lf
 *.yml text eol=lf
 *.yaml text eol=lf
+.prettierrc text eol=lf
