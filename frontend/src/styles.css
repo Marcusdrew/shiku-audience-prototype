@@ -355,3 +355,15 @@ a {
   display: grid;
   gap: 1rem;
 }
+.case {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  align-self: end;
+  padding-bottom: 0.6rem;
+}
+.actions-ligne {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}

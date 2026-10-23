@@ -240,6 +240,18 @@ export const MATRICE_OFFICIELLE: Matrice = {
         'dans le journal : en attente de Q-5 (seuls les noms des champs sont tracés).',
       implementee: true,
     },
+    'agenda.autoriser_rattachement': {
+      roles: ['authority'],
+      delegues: [],
+      source:
+        'Réponses de M. Jordan du 22/10/2026 (Q-10 et point 7, DEC-32) : « l’Autorité autorise, ' +
+        'l’Administrateur applique » le rattachement Autorité ↔ agenda, dans l’application, journalisé',
+      hypothese: 'HYPOTHESE(DEC-32) : périmètre de l’Autorité, règle provisoire',
+      limites:
+        'L’Autorité désignée autorise ou révoque SON rattachement ; l’application relève de ' +
+        '`agenda.administrer` (Administrateur).',
+      implementee: true,
+    },
     'demande.modifier': {
       roles: ['authority', 'assistant', 'reception'],
       delegues: [],

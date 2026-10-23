@@ -1,7 +1,15 @@
 import { useCallback, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link } from 'react-router';
-import { creerAgenda, listerAgendas, planning } from '../api/metier';
+import {
+  type Agenda,
+  creerAgenda,
+  etapeRattachement,
+  listerAgendas,
+  listerUtilisateurs,
+  planning,
+  proposerRattachement,
+} from '../api/metier';
 import { useRequete } from '../api/useRequete';
 import { useAuth } from '../auth/AuthContext';
 import { useDroits } from '../auth/DroitsContext';
@@ -11,7 +19,7 @@ import { ErreurAction } from '../components/ErreurAction';
 import { ErrorState } from '../components/ErrorState';
 import { Spinner } from '../components/Spinner';
 import { useAction } from '../components/useAction';
-import { formaterDate, LIBELLES_AUDIENCE } from '../lib/libelles';
+import { formaterDate, LIBELLES_AUDIENCE, LIBELLES_RATTACHEMENT } from '../lib/libelles';
 
 const jourLocal = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -23,8 +31,6 @@ export function AgendasPage() {
   const [agendaId, setAgendaId] = useState('');
   const [du, setDu] = useState(() => jourLocal(new Date()));
   const [au, setAu] = useState(() => jourLocal(new Date(Date.now() + 7 * 86_400_000)));
-  const [nom, setNom] = useState('');
-  const creation = useAction();
   const voirPlanning = peut('audience.consulter');
 
   const charger = useCallback(
@@ -43,14 +49,6 @@ export function AgendasPage() {
   );
   const plan = useRequete(charger);
 
-  async function ajouter(e: FormEvent) {
-    e.preventDefault();
-    if (await creation.executer(() => creerAgenda(jeton, nom))) {
-      setNom('');
-      agendas.recharger();
-    }
-  }
-
   return (
     <>
       <h1>Agendas</h1>
@@ -62,30 +60,22 @@ export function AgendasPage() {
             <ErrorState message={agendas.message} onRetry={agendas.recharger} />
           )}
           {agendas.etat === 'succes' && (
-            <ul className="liste-simple">
-              {agendas.donnees.elements.map((a) => (
-                <li key={a.id}>{a.nom}</li>
-              ))}
-            </ul>
-          )}
-          {peut('agenda.administrer') && (
-            <form className="formulaire" onSubmit={(e) => void ajouter(e)}>
-              <Champ id="ag-nom" libelle="Nouvel agenda">
-                <input
-                  id="ag-nom"
-                  required
-                  maxLength={200}
-                  value={nom}
-                  onChange={(e) => setNom(e.target.value)}
-                />
-              </Champ>
-              <ErreurAction erreur={creation.erreur} />
-              <button type="submit" className="bouton" disabled={creation.enCours}>
-                Créer l’agenda
-              </button>
-            </form>
+            <ListeAgendas
+              jeton={jeton}
+              agendas={agendas.donnees.elements}
+              peutAutoriser={peut('agenda.autoriser_rattachement')}
+              peutAppliquer={peut('agenda.administrer')}
+              onChange={agendas.recharger}
+            />
           )}
         </Card>
+        {peut('agenda.administrer') && agendas.etat === 'succes' && (
+          <AdministrationAgendas
+            jeton={jeton}
+            agendas={agendas.donnees.elements}
+            onChange={agendas.recharger}
+          />
+        )}
         {voirPlanning ? (
           <Card titre="Planning">
             <div className="filtres">
@@ -158,5 +148,243 @@ export function AgendasPage() {
         )}
       </div>
     </>
+  );
+}
+
+/**
+ * Agendas et Autorités rattachées (HYPOTHESE(DEC-32)). L'Autorité désignée autorise ou révoque son
+ * rattachement ; l'Administrateur applique un rattachement autorisé. Les boutons suivent les droits
+ * renvoyés par le serveur, qui contrôle de nouveau chaque étape.
+ */
+function ListeAgendas({
+  jeton,
+  agendas,
+  peutAutoriser,
+  peutAppliquer,
+  onChange,
+}: {
+  jeton: string | null;
+  agendas: Agenda[];
+  peutAutoriser: boolean;
+  peutAppliquer: boolean;
+  onChange: () => void;
+}) {
+  const action = useAction();
+  async function etape(id: string, e: 'autoriser' | 'appliquer' | 'revoquer') {
+    if (await action.executer(() => etapeRattachement(jeton, id, e))) onChange();
+  }
+  if (!agendas.length) return <p>Aucun agenda.</p>;
+  return (
+    <>
+      <ErreurAction erreur={action.erreur} />
+      <div className="defile">
+        <table className="tableau">
+          <thead>
+            <tr>
+              <th>Agenda</th>
+              <th>Autorité de rattachement</th>
+            </tr>
+          </thead>
+          <tbody>
+            {agendas.map((a) => (
+              <tr key={a.id}>
+                <td>
+                  {a.nom}
+                  {a.a_rattacher && (
+                    <>
+                      {' '}
+                      <Badge ton="attention">À rattacher : décisions et suivi impossibles</Badge>
+                    </>
+                  )}
+                </td>
+                <td>
+                  {(a.rattachements ?? []).length === 0 && '—'}
+                  <ul className="liste-simple">
+                    {(a.rattachements ?? []).map((r) => (
+                      <li key={r.id}>
+                        {r.autorite_nom}
+                        {r.est_moi ? ' (vous)' : ''} —{' '}
+                        <Badge ton={r.en_vigueur ? 'ok' : 'neutre'}>
+                          {r.statut === 'actif' && !r.en_vigueur
+                            ? 'Actif, hors période'
+                            : LIBELLES_RATTACHEMENT[r.statut]}
+                        </Badge>{' '}
+                        <span className="note">
+                          du {r.debut}
+                          {r.fin ? ` au ${r.fin}` : ''}
+                        </span>
+                        <div className="actions-ligne">
+                          {peutAutoriser && r.est_moi && r.statut === 'propose' && (
+                            <button
+                              type="button"
+                              className="bouton bouton--secondaire"
+                              disabled={action.enCours}
+                              onClick={() => void etape(r.id, 'autoriser')}
+                            >
+                              Autoriser
+                            </button>
+                          )}
+                          {peutAppliquer && r.statut === 'autorise' && (
+                            <button
+                              type="button"
+                              className="bouton bouton--secondaire"
+                              disabled={action.enCours}
+                              onClick={() => void etape(r.id, 'appliquer')}
+                            >
+                              Appliquer
+                            </button>
+                          )}
+                          {peutAutoriser && r.est_moi && (
+                            <button
+                              type="button"
+                              className="bouton bouton--secondaire"
+                              disabled={action.enCours}
+                              onClick={() => void etape(r.id, 'revoquer')}
+                            >
+                              Révoquer
+                            </button>
+                          )}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
+
+/**
+ * Administrateur : création d'un agenda avec son Autorité de rattachement (obligatoire, DEC-32), et
+ * proposition d'un rattachement pour un agenda existant. La personne désignée doit ensuite autoriser.
+ */
+function AdministrationAgendas({
+  jeton,
+  agendas,
+  onChange,
+}: {
+  jeton: string | null;
+  agendas: Agenda[];
+  onChange: () => void;
+}) {
+  const comptes = useRequete(
+    useCallback((s: AbortSignal) => listerUtilisateurs(jeton, s), [jeton]),
+  );
+  const [nom, setNom] = useState('');
+  const [autorite, setAutorite] = useState('');
+  const [debut, setDebut] = useState('');
+  const [fin, setFin] = useState('');
+  const [agendaCible, setAgendaCible] = useState('');
+  const [autoriteCible, setAutoriteCible] = useState('');
+  const creation = useAction();
+  const proposition = useAction();
+  const personnes =
+    comptes.etat === 'succes' ? comptes.donnees.elements.filter((u) => u.actif) : [];
+  const periode = { ...(debut ? { debut } : {}), ...(fin ? { fin } : {}) };
+
+  async function ajouter(e: FormEvent) {
+    e.preventDefault();
+    if (
+      await creation.executer(() => creerAgenda(jeton, { nom, autorite_id: autorite, ...periode }))
+    ) {
+      setNom('');
+      setAutorite('');
+      setDebut('');
+      setFin('');
+      onChange();
+    }
+  }
+  async function proposer(e: FormEvent) {
+    e.preventDefault();
+    if (
+      await proposition.executer(() =>
+        proposerRattachement(jeton, agendaCible, { autorite_id: autoriteCible }),
+      )
+    ) {
+      setAgendaCible('');
+      setAutoriteCible('');
+      onChange();
+    }
+  }
+  const choixPersonne = (id: string, valeur: string, changer: (v: string) => void) => (
+    <select id={id} required value={valeur} onChange={(e) => changer(e.target.value)}>
+      <option value="">— Choisir —</option>
+      {personnes.map((u) => (
+        <option key={u.id} value={u.id}>
+          {u.nom_complet}
+        </option>
+      ))}
+    </select>
+  );
+
+  return (
+    <Card titre="Administration des agendas">
+      {comptes.etat === 'erreur' && (
+        <ErrorState message={comptes.message} onRetry={comptes.recharger} />
+      )}
+      <p className="note">
+        L’Autorité de rattachement est obligatoire. Le rattachement n’est actif qu’après
+        l’autorisation de la personne désignée (qui doit avoir le rôle Autorité), puis son
+        application ici. D’ici là, les demandes de l’agenda restent dans la file « à rattacher ».
+      </p>
+      <form className="formulaire" onSubmit={(e) => void ajouter(e)}>
+        <Champ id="ag-nom" libelle="Nouvel agenda">
+          <input
+            id="ag-nom"
+            required
+            maxLength={200}
+            value={nom}
+            onChange={(e) => setNom(e.target.value)}
+          />
+        </Champ>
+        <Champ id="ag-autorite" libelle="Autorité de rattachement">
+          {choixPersonne('ag-autorite', autorite, setAutorite)}
+        </Champ>
+        <Champ id="ag-debut" libelle="Début (facultatif, aujourd’hui par défaut)">
+          <input
+            id="ag-debut"
+            type="date"
+            value={debut}
+            onChange={(e) => setDebut(e.target.value)}
+          />
+        </Champ>
+        <Champ id="ag-fin" libelle="Fin (facultative)">
+          <input id="ag-fin" type="date" value={fin} onChange={(e) => setFin(e.target.value)} />
+        </Champ>
+        <ErreurAction erreur={creation.erreur} />
+        <button type="submit" className="bouton" disabled={creation.enCours}>
+          Créer l’agenda
+        </button>
+      </form>
+      <form className="formulaire" onSubmit={(e) => void proposer(e)}>
+        <h3>Proposer un rattachement pour un agenda existant</h3>
+        <Champ id="pr-agenda" libelle="Agenda">
+          <select
+            id="pr-agenda"
+            required
+            value={agendaCible}
+            onChange={(e) => setAgendaCible(e.target.value)}
+          >
+            <option value="">— Choisir —</option>
+            {agendas.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.nom}
+              </option>
+            ))}
+          </select>
+        </Champ>
+        <Champ id="pr-autorite" libelle="Autorité">
+          {choixPersonne('pr-autorite', autoriteCible, setAutoriteCible)}
+        </Champ>
+        <ErreurAction erreur={proposition.erreur} />
+        <button type="submit" className="bouton bouton--secondaire" disabled={proposition.enCours}>
+          Proposer le rattachement
+        </button>
+      </form>
+    </Card>
   );
 }

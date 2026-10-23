@@ -31,10 +31,16 @@ export function DemandesPage() {
   const [recherche, setRecherche] = useState('');
   const [creation, setCreation] = useState(false);
   const [decalage, setDecalage] = useState(0);
+  const [aRattacher, setARattacher] = useState(false);
 
   const charger = useCallback(
-    (s: AbortSignal) => listerDemandes(jeton, { statut, q: recherche, decalage }, s),
-    [jeton, statut, recherche, decalage],
+    (s: AbortSignal) =>
+      listerDemandes(
+        jeton,
+        { statut, q: recherche, decalage, ...(aRattacher ? { a_rattacher: 'true' as const } : {}) },
+        s,
+      ),
+    [jeton, statut, recherche, decalage, aRattacher],
   );
   const liste = useRequete(charger);
 
@@ -91,6 +97,17 @@ export function DemandesPage() {
                   ))}
                 </select>
               </Champ>
+              <label className="case">
+                <input
+                  type="checkbox"
+                  checked={aRattacher}
+                  onChange={(e) => {
+                    setDecalage(0);
+                    setARattacher(e.target.checked);
+                  }}
+                />{' '}
+                File « à rattacher » (agenda sans Autorité rattachée)
+              </label>
               <button type="submit" className="bouton bouton--secondaire">
                 Rechercher
               </button>

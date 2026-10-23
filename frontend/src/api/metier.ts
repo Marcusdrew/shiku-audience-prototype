@@ -8,9 +8,24 @@ export interface Droits {
   matrice: { statut: string; reference: string };
   actions: string[];
 }
+export type StatutRattachement = 'propose' | 'autorise' | 'actif' | 'revoque';
+/** Rattachement Autorité ↔ agenda (périmètre, HYPOTHESE(DEC-32)). */
+export interface Rattachement {
+  id: string;
+  autorite_id: string;
+  autorite_nom: string;
+  statut: StatutRattachement;
+  debut: string;
+  fin: string | null;
+  en_vigueur: boolean;
+  est_moi: boolean;
+}
 export interface Agenda {
   id: string;
   nom: string;
+  /** Aucun rattachement actif : décisions et suivi refusés (file « à rattacher »). */
+  a_rattacher?: boolean;
+  rattachements?: Rattachement[];
 }
 /**
  * Visiteur tel que le serveur le renvoie (DEC-36) : fiche complète pour l'Assistant et l'Autorité
@@ -120,7 +135,21 @@ const envoyer = <T>(methode: 'POST' | 'PATCH', chemin: string, jeton: J, corps?:
 
 export const lireDroits = (j: J, s?: AbortSignal) => get<Droits>('/droits', j, s);
 export const listerAgendas = (j: J, s?: AbortSignal) => get<Liste<Agenda>>('/agendas', j, s);
-export const creerAgenda = (j: J, nom: string) => envoyer<Agenda>('POST', '/agendas', j, { nom });
+export const creerAgenda = (
+  j: J,
+  corps: { nom: string; autorite_id: string; debut?: string; fin?: string },
+) => envoyer<Agenda>('POST', '/agendas', j, corps);
+export const proposerRattachement = (
+  j: J,
+  agendaId: string,
+  corps: { autorite_id: string; debut?: string; fin?: string },
+) => envoyer<{ id: string }>('POST', `/agendas/${agendaId}/rattachements`, j, corps);
+export const etapeRattachement = (
+  j: J,
+  id: string,
+  etape: 'autoriser' | 'appliquer' | 'revoquer',
+) =>
+  envoyer<{ id: string; statut: StatutRattachement }>('POST', `/rattachements/${id}/${etape}`, j);
 export const rechercherVisiteurs = (j: J, q: string, s?: AbortSignal) =>
   get<Liste<Visiteur>>(`/visiteurs${qs({ q, limite: 20 })}`, j, s);
 export interface NouveauVisiteur {
@@ -155,7 +184,7 @@ export function lireDoublon(corps: unknown): DoublonVisiteur | null {
 export const TAILLE_PAGE = 20;
 export const listerDemandes = (
   j: J,
-  f: { statut?: string; q?: string; decalage?: number },
+  f: { statut?: string; q?: string; decalage?: number; a_rattacher?: 'true' },
   s?: AbortSignal,
 ) => get<Liste<Demande>>(`/demandes${qs({ ...f, limite: TAILLE_PAGE })}`, j, s);
 export const lireDemande = (j: J, id: string, s?: AbortSignal) =>

@@ -67,7 +67,10 @@ describe('API métier sur PostgreSQL réel', () => {
   let appBase: pg.Client; // rôle applicatif : pour prouver ce que la base refuse
   let orgId: string;
   let autreOrgId: string;
-  const acteurs = {} as Record<Role | 'autreOrg' | 'sansCompte' | 'inactif', Acteur>;
+  const acteurs = {} as Record<
+    Role | 'autreOrg' | 'sansCompte' | 'inactif' | 'autreAutorite',
+    Acteur
+  >;
 
   async function creerActeur(
     cle: keyof typeof acteurs,
@@ -146,6 +149,7 @@ describe('API métier sur PostgreSQL réel', () => {
     await creerActeur('authority', 'authority', orgId);
     await creerActeur('administrator', 'administrator', orgId);
     await creerActeur('autreOrg', 'authority', autreOrgId);
+    await creerActeur('autreAutorite', 'authority', orgId);
     await creerActeur('inactif', 'assistant', orgId, false);
     await creerActeur('sansCompte', 'assistant', orgId, true, false);
 
@@ -175,6 +179,7 @@ describe('API métier sur PostgreSQL réel', () => {
           'demande',
           'compteur_reference',
           'visiteur',
+          'rattachement_agenda',
           'agenda',
           'utilisateur',
         ])
@@ -217,17 +222,62 @@ describe('API métier sur PostgreSQL réel', () => {
   });
 
   describe('administration : comptes et agendas', () => {
-    it('l’administrateur crée un agenda ; la réception ne le peut pas ; doublon = 409', async () => {
+    it('l’administrateur crée un agenda avec son Autorité ; la réception ne le peut pas ; doublon = 409', async () => {
       expect((await appel('reception', 'POST', '/agendas', { nom: 'X' })).statut).toBe(403);
-      const r = await appel('administrator', 'POST', '/agendas', { nom: `Agenda ${MARQUE}` });
+      // DEC-32 : l'Autorité de rattachement est obligatoire à la création.
+      const sans = await appel('administrator', 'POST', '/agendas', { nom: `Agenda ${MARQUE}` });
+      expect(sans.statut).toBe(400);
+      expect(sans.corps.erreurs.map((e: { champ: string }) => e.champ)).toEqual(['autorite_id']);
+      const r = await appel('administrator', 'POST', '/agendas', {
+        nom: `Agenda ${MARQUE}`,
+        autorite_id: acteurs.authority.id,
+      });
       expect(r.statut).toBe(201);
+      expect(r.corps.rattachement.statut).toBe('propose');
       agendaId = r.corps.id;
       expect(
-        (await appel('administrator', 'POST', '/agendas', { nom: `Agenda ${MARQUE}` })).statut,
+        (
+          await appel('administrator', 'POST', '/agendas', {
+            nom: `Agenda ${MARQUE}`,
+            autorite_id: acteurs.authority.id,
+          })
+        ).statut,
       ).toBe(409);
       const liste = await appel('reception', 'GET', '/agendas');
       expect(liste.statut).toBe(200);
-      expect(liste.corps.elements.map((a: { id: string }) => a.id)).toContain(agendaId);
+      const a = liste.corps.elements.find((x: { id: string }) => x.id === agendaId);
+      expect(a.a_rattacher).toBe(true);
+      // L'Autorité autorise, l'Administrateur applique (deux étapes journalisées).
+      const rid = r.corps.rattachement.id as string;
+      expect((await appel('administrator', 'POST', `/rattachements/${rid}/appliquer`)).statut).toBe(
+        409,
+      );
+      expect((await appel('authority', 'POST', `/rattachements/${rid}/autoriser`)).statut).toBe(
+        200,
+      );
+      expect((await appel('administrator', 'POST', `/rattachements/${rid}/appliquer`)).statut).toBe(
+        200,
+      );
+      const apres = await appel('authority', 'GET', '/agendas');
+      const b = apres.corps.elements.find((x: { id: string }) => x.id === agendaId);
+      expect(b.a_rattacher).toBe(false);
+      expect(b.rattachements).toEqual([
+        expect.objectContaining({
+          autorite_id: acteurs.authority.id,
+          statut: 'actif',
+          en_vigueur: true,
+          est_moi: true,
+        }),
+      ]);
+      const j = await admin.query<{ action: string; utilisateur_id: string }>(
+        `SELECT action, utilisateur_id FROM journal WHERE objet_id=$1 ORDER BY id`,
+        [rid],
+      );
+      expect(j.rows).toEqual([
+        { action: 'rattachement_agenda.proposer', utilisateur_id: acteurs.administrator.id },
+        { action: 'rattachement_agenda.autoriser', utilisateur_id: acteurs.authority.id },
+        { action: 'rattachement_agenda.appliquer', utilisateur_id: acteurs.administrator.id },
+      ]);
     });
     describe('comptes : compte de service Keycloak (décision de M. Jordan, 16/10/2026)', () => {
       const valide = (courriel: string) => ({
@@ -1096,6 +1146,139 @@ describe('API métier sur PostgreSQL réel', () => {
       expect(d.corps.audience.responsable_suivi_id).toBe(acteurs.authority.id);
       expect(d.corps.audience.responsable_suivi_nom).toBe('Fictif authority');
       expect(d.corps.audience.statut).toBe('cloturee');
+    });
+  });
+
+  describe('périmètre de l’Autorité par agenda (HYPOTHESE(DEC-32))', () => {
+    let agendaAutre: string;
+    let agendaLibre: string;
+    let rattachementAutre: string;
+    const nouvelleDemande = async (agenda: string, objet: string) => {
+      const r = await appel('reception', 'POST', '/demandes', {
+        visiteur_id: visiteurId,
+        agenda_id: agenda,
+        objet,
+        contact: 'perimetre@exemple.invalid',
+      });
+      expect(r.statut).toBe(201);
+      return r.corps.id as string;
+    };
+
+    beforeAll(async () => {
+      const a = await appel('administrator', 'POST', '/agendas', {
+        nom: `Agenda autre Autorité ${MARQUE}`,
+        autorite_id: acteurs.autreAutorite.id,
+      });
+      agendaAutre = a.corps.id;
+      rattachementAutre = a.corps.rattachement.id;
+      await appel('autreAutorite', 'POST', `/rattachements/${rattachementAutre}/autoriser`);
+      await appel('administrator', 'POST', `/rattachements/${rattachementAutre}/appliquer`);
+      const l = await appel('administrator', 'POST', '/agendas', {
+        nom: `Agenda sans Autorité ${MARQUE}`,
+        autorite_id: acteurs.authority.id,
+      });
+      agendaLibre = l.corps.id; // proposé, jamais autorisé : pas de rattachement actif
+    });
+
+    it('étapes : seule l’Autorité désignée autorise ; l’Administrateur ne s’autorise pas ; compte inconnu refusé', async () => {
+      const p = await appel('administrator', 'POST', `/agendas/${agendaLibre}/rattachements`, {
+        autorite_id: acteurs.autreAutorite.id,
+        debut: '2026-01-01',
+        fin: '2025-12-31',
+      });
+      expect(p.statut).toBe(400);
+      const ok = await appel('administrator', 'POST', `/agendas/${agendaLibre}/rattachements`, {
+        autorite_id: acteurs.autreAutorite.id,
+      });
+      expect(ok.statut).toBe(201);
+      const id = ok.corps.id as string;
+      expect((await appel('authority', 'POST', `/rattachements/${id}/autoriser`)).statut).toBe(403);
+      expect((await appel('administrator', 'POST', `/rattachements/${id}/autoriser`)).statut).toBe(
+        403,
+      );
+      expect((await appel('autreAutorite', 'POST', `/rattachements/${id}/revoquer`)).statut).toBe(
+        200,
+      );
+      expect(
+        (
+          await appel('administrator', 'POST', `/agendas/${agendaLibre}/rattachements`, {
+            autorite_id: '00000000-0000-4000-8000-000000000000',
+          })
+        ).statut,
+      ).toBe(400);
+      expect(
+        (
+          await appel('administrator', 'POST', `/agendas/${agendaLibre}/rattachements`, {
+            autorite_id: acteurs.administrator.id,
+          })
+        ).statut,
+      ).toBe(409);
+    });
+
+    it('agenda sans rattachement actif : décision refusée (409), demande dans la file « à rattacher », absente de la file de décision', async () => {
+      const d = await nouvelleDemande(agendaLibre, 'Demande à rattacher (fictive)');
+      const r = await appel('authority', 'POST', `/demandes/${d}/decision`, {
+        type: 'valider',
+        motif: 'Essai',
+      });
+      expect(r.statut).toBe(409);
+      expect(r.corps.message).toMatch(/à rattacher/);
+      const file = await appel('reception', 'GET', '/demandes?a_rattacher=true');
+      expect(file.corps.elements.map((x: { id: string }) => x.id)).toContain(d);
+      const decisions = await appel('authority', 'GET', '/decisions/file?limite=100');
+      expect(decisions.corps.elements.map((x: { id: string }) => x.id)).not.toContain(d);
+      expect((await appel('reception', 'GET', '/demandes?a_rattacher=oui')).statut).toBe(400);
+      // La consultation reste ouverte.
+      expect((await appel('authority', 'GET', `/demandes/${d}`)).statut).toBe(200);
+    });
+
+    it('agenda d’une autre Autorité : hors périmètre (403) ; l’Autorité rattachée décide et planifie', async () => {
+      const d = await nouvelleDemande(agendaAutre, 'Demande autre Autorité (fictive)');
+      const hors = await appel('authority', 'POST', `/demandes/${d}/decision`, {
+        type: 'valider',
+        motif: 'Essai',
+      });
+      expect(hors.statut).toBe(403);
+      const file = await appel('authority', 'GET', '/decisions/file?limite=100');
+      expect(file.corps.elements.map((x: { id: string }) => x.id)).not.toContain(d);
+      const fileAutre = await appel('autreAutorite', 'GET', '/decisions/file?limite=100');
+      expect(fileAutre.corps.elements.map((x: { id: string }) => x.id)).toContain(d);
+      expect(
+        (
+          await appel('autreAutorite', 'POST', `/demandes/${d}/decision`, {
+            type: 'valider',
+            motif: 'Recevable (fictif)',
+          })
+        ).statut,
+      ).toBe(201);
+      const planHors = await appel('authority', 'POST', '/audiences', {
+        demande_id: d,
+        debut_prevu: '2026-12-10T09:00:00Z',
+        duree_prevue_minutes: 30,
+      });
+      expect(planHors.statut).toBe(403);
+      const plan = await appel('autreAutorite', 'POST', '/audiences', {
+        demande_id: d,
+        debut_prevu: '2026-12-10T09:00:00Z',
+        duree_prevue_minutes: 30,
+      });
+      expect(plan.statut).toBe(201);
+      // L'Autorité hors périmètre ne suit pas ; l'Assistant suit (agenda rattaché).
+      expect(
+        (await appel('authority', 'POST', `/audiences/${plan.corps.id}/demarrer`)).statut,
+      ).toBe(403);
+      // Révocation : effet à la requête suivante, le suivi devient impossible.
+      expect(
+        (await appel('autreAutorite', 'POST', `/rattachements/${rattachementAutre}/revoquer`))
+          .statut,
+      ).toBe(200);
+      const apres = await appel('assistant', 'POST', `/audiences/${plan.corps.id}/demarrer`);
+      expect(apres.statut).toBe(409);
+      const j = await admin.query(
+        `SELECT 1 FROM journal WHERE objet_id=$1 AND action='rattachement_agenda.revoquer'`,
+        [rattachementAutre],
+      );
+      expect(j.rowCount).toBe(1);
     });
   });
 

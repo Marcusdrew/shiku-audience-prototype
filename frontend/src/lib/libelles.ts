@@ -1,5 +1,5 @@
 import type { Ton } from '../components/Card';
-import type { Decision, StatutAudience, StatutDemande } from '../api/metier';
+import type { Decision, StatutAudience, StatutDemande, StatutRattachement } from '../api/metier';
 
 // Libellés affichés. Le statut est toujours dit en toutes lettres (la couleur seule ne suffit pas, ENF03-09).
 export const LIBELLES_STATUT: Record<StatutDemande, string> = {
@@ -63,3 +63,11 @@ export function formaterDate(iso: string | null | undefined): string {
     ? '—'
     : new Intl.DateTimeFormat('fr-FR', { dateStyle: 'short', timeStyle: 'short' }).format(d);
 }
+
+/** Rattachement Autorité ↔ agenda (HYPOTHESE(DEC-32)) : l'étape suivante est dite en toutes lettres. */
+export const LIBELLES_RATTACHEMENT: Record<StatutRattachement, string> = {
+  propose: 'Proposé — à autoriser par l’Autorité',
+  autorise: 'Autorisé — à appliquer par l’Administrateur',
+  actif: 'Actif',
+  revoque: 'Révoqué',
+};

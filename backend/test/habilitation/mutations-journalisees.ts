@@ -5,7 +5,11 @@
 // Les LECTURES, les REFUS et l'administration directe de Keycloak ne sont PAS journalisés : la règle
 // métier n'est pas arrêtée (voir docs/dev/JOURNAL.md, « Ce qui n'est pas journalisé »).
 export const MUTATIONS_JOURNALISEES: Readonly<Record<string, readonly string[]>> = {
-  'agendas creer': ['agenda.creer'],
+  'agendas creer': ['agenda.creer', 'rattachement_agenda.proposer'],
+  'agendas rattacher': ['rattachement_agenda.proposer'],
+  'rattachements autoriser': ['rattachement_agenda.autoriser'],
+  'rattachements appliquer': ['rattachement_agenda.appliquer'],
+  'rattachements revoquer': ['rattachement_agenda.revoquer'],
   'visiteurs creer': ['visiteur.creer'],
   'visiteurs modifier': ['visiteur.modifier'],
   'demandes creer': ['demande.creer'],

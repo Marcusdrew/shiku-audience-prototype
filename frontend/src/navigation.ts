@@ -60,10 +60,17 @@ export const NAVIGATION: readonly EntreeNavigation[] = [
     implemente: true,
     libelle: 'Agendas',
     resume:
-      'Agendas et planning des audiences ; la planification se fait depuis la demande validée. Reprogrammation et annulation : non développées.',
+      'Agendas, Autorités rattachées (proposer, autoriser, appliquer, révoquer) et planning des audiences ; la planification se fait depuis la demande validée. Reprogrammation et annulation : non développées.',
     exigences: ['EF03-02', 'EF03-06', 'EF03-08', 'EF03-09', 'EF03-24'],
     stories: ['US-05-024 à US-05-026', 'US-05-047 à US-05-052'],
-    api: ['GET /agendas', 'POST /agendas', 'GET /audiences', 'POST /audiences'],
+    api: [
+      'GET /agendas',
+      'POST /agendas',
+      'POST /agendas/:id/rattachements',
+      'POST /rattachements/:id/(autoriser|appliquer|revoquer)',
+      'GET /audiences',
+      'POST /audiences',
+    ],
   },
   {
     chemin: '/operations',

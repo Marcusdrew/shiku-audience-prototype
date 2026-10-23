@@ -26,7 +26,7 @@ Source : réponse de M. Jordan du 22/10/2026 (`REPONSE-POINTS-METIER-RESTANTS.do
 | Sujet | Statut | Lot |
 | --- | --- | --- |
 | Q-1 Journal : dix catégories, vue limitée de l'Autorité, accès temporaire de l'Administrateur (24 h, 72 h au plus) | Décidé, non développé | L2, L3 |
-| Q-10 Rattachement Autorité ↔ agenda, file « à rattacher » | Règle provisoire `HYPOTHESE(DEC-32)`, non développée ; rattachement autorisé par l'Autorité et appliqué par l'Administrateur, dans l'application, journalisé | L4 |
+| Q-10 Rattachement Autorité ↔ agenda, file « à rattacher » | Règle provisoire `HYPOTHESE(DEC-32)`, **développée (L4)** ; rattachement autorisé par l'Autorité et appliqué par l'Administrateur, dans l'application, journalisé ; voir ci-dessous les choix faits | L4 |
 | Q-6 à Q-8 Réinitialisation par courriel, approbations, second facteur de l'Autorité, compte de service sans droit de définir un mot de passe | Décidé, non développé ; limite Keycloak à lever (`COMPTES-KEYCLOAK.md`) | L7 |
 | Q-12 Doublons de visiteurs : avertir et confirmer, motif « homonyme distinct », vue minimale de la Réception (courriel `j***@g***.com`, téléphone : deux derniers chiffres ; contact complet jamais envoyé à l'interface) | Décidé, **développé (L1)** | L1 |
 | Visiteur : modification par l'Assistant et l'Autorité seulement (valeurs avant et après) ; identité minimale = nom, prénom, un moyen de contact | Règle provisoire `HYPOTHESE(DEC-36)`, **développée (L1)** ; voir ci-dessous les choix faits | L1 |
@@ -39,6 +39,13 @@ Choix faits pour L1, marqués `HYPOTHESE(DEC-36)` (à confirmer) :
 - pas de contrôle de doublon lors d'une **modification** (non demandé) ;
 - journal de `visiteur.modifier` : noms des champs changés seulement, en attendant Q-5 ; journal de `visiteur.creer` avec doublon : code, identifiants des fiches proches, motif ou confirmation, jamais d'identité ;
 - fiches antérieures (nom complet seul) : nom et prénom vides ; une modification du nom exige les deux.
+
+Choix faits pour L4, marqués `HYPOTHESE(DEC-32)` (à confirmer) :
+- trois étapes au lieu de deux : l'Administrateur **propose** (en désignant l'Autorité, champ obligatoire à la création d'un agenda), l'Autorité désignée **autorise**, l'Administrateur **applique** ; l'Autorité peut **révoquer** son rattachement ; tout est journalisé (`rattachement_agenda.proposer`, `autoriser`, `appliquer`, `revoquer`) ;
+- période en jours (dates), sans heure ; plusieurs Autorités possibles pour un même agenda ;
+- l'application ne connaît pas les rôles Keycloak : l'Administrateur choisit parmi tous les comptes actifs ; seul un compte qui a le rôle Autorité peut ensuite autoriser ;
+- Assistant : décisions impossibles (matrice) ; pour le suivi (droit P) et la file de décision, il agit sur tout agenda rattaché à une Autorité, en attendant le périmètre par délégation (Sprint 2) ;
+- donnée initiale : `amorcer-donnees-test.mjs` rattache l'Autorité de test à tout agenda qui n'a **jamais** eu de rattachement (une révocation n'est pas annulée), statut actif, source « initialisation_systeme », entrée de journal `rattachement_agenda.initialiser` attribuée au compte administrateur de test qui lance le déploiement.
 
 Précisions du 22/10 au soir : vue du journal de l'Autorité sans « décisions et audiences » ni « comptes et accès », sauf entrées « sous délégation » ; expiration de l'accès temporaire appliquée à l'instant, journalisée « expiré le …, constaté le … » ; limite Keycloak acceptée avec contre-mesures (L7). Toujours sans réponse : Q-3 (rôle `shiku_audit`), Q-5 (contenu du journal), Q-15 (signature des actes), recopiées en entier le 22/10 ; classement des actions dans les catégories, proposé le 22/10. Interface publique par code QR (DEC-31) : non décidée, non construite.
 

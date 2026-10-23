@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { JournalModule } from '../journal/journal.module.js';
-import { AgendasController } from './agendas.controller.js';
+import { AgendasController, RattachementsController } from './agendas.controller.js';
 
-@Module({ imports: [JournalModule], controllers: [AgendasController] })
+@Module({ imports: [JournalModule], controllers: [AgendasController, RattachementsController] })
 export class AgendasModule {}

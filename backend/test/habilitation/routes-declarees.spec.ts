@@ -8,6 +8,7 @@ import { MUTATIONS_JOURNALISEES } from './mutations-journalisees.js';
 
 const ROUTES_ATTENDUES = [
   'agendas creer',
+  'agendas rattacher',
   'agendas lister',
   'audiences consulter',
   'audiences cloturer',
@@ -25,6 +26,9 @@ const ROUTES_ATTENDUES = [
   'droits lire',
   'journal lister',
   'moi lire',
+  'rattachements appliquer',
+  'rattachements autoriser',
+  'rattachements revoquer',
   'sante verifier',
   'utilisateurs creer',
   'utilisateurs rattachement',

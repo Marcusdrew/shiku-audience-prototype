@@ -26,6 +26,8 @@ describe('entreesVisibles', () => {
       'POST /demandes/:id/decision',
       'GET /agendas',
       'POST /agendas',
+      'POST /agendas/:id/rattachements',
+      'POST /rattachements/:id/(autoriser|appliquer|revoquer)',
       'GET /audiences',
       'POST /audiences',
       'POST /audiences/:id/demarrer',

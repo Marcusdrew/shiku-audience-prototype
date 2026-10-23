@@ -17,6 +17,7 @@ import { PG_POOL } from '../db/db.module.js';
 import { enTransaction } from '../db/transaction.js';
 import { ExigeDroit } from '../habilitation/acces.decorators.js';
 import { HabilitationService } from '../habilitation/habilitation.service.js';
+import { SQL_RATTACHEMENT_ACTIF } from '../habilitation/perimetre.service.js';
 import { JournalService } from '../journal/journal.service.js';
 import { type Contexte, ContexteCourant } from '../utilisateurs/contexte.js';
 import { STATUTS_DEMANDE, STATUTS_MODIFIABLES, type StatutDemande } from './statuts.js';
@@ -169,11 +170,18 @@ export class DemandesController {
     const agendaId =
       typeof q.agenda_id === 'string' ? exigerUuidParam('agenda_id', q.agenda_id) : null;
     const terme = typeof q.q === 'string' ? q.q.trim().slice(0, 100) : '';
+    // File « à rattacher » (HYPOTHESE(DEC-32)) : demandes dont l'agenda n'a aucun rattachement actif.
+    if (q.a_rattacher !== undefined && q.a_rattacher !== 'true' && q.a_rattacher !== 'false')
+      throw new ErreurValidation([{ champ: 'a_rattacher', message: 'true ou false attendu.' }]);
+    const aRattacher = q.a_rattacher === 'true';
     const { rows } = await this.pool.query(
       `SELECT ${COLONNES}, count(*) OVER() AS total ${JOINTURES}
         WHERE d.organisation_id = $1
           AND ($2::text IS NULL OR d.statut = $2)
           AND ($3::uuid IS NULL OR d.agenda_id = $3)
+          AND (NOT $7 OR NOT EXISTS (SELECT 1 FROM rattachement_agenda r
+                                      WHERE r.organisation_id = d.organisation_id
+                                        AND r.agenda_id = d.agenda_id AND ${SQL_RATTACHEMENT_ACTIF}))
           AND ($4 = '' OR d.reference ILIKE '%' || $4 || '%' OR d.objet ILIKE '%' || $4 || '%'
                OR v.nom_complet ILIKE '%' || $4 || '%')
         ORDER BY d.cree_le DESC, d.reference DESC
@@ -185,6 +193,7 @@ export class DemandesController {
         terme.replace(/[%_\\]/g, (m) => `\\${m}`),
         limite,
         decalage,
+        aRattacher,
       ],
     );
     const total = rows[0] ? Number(rows[0].total) : 0;

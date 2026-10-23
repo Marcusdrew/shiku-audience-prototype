@@ -15,6 +15,7 @@ import { ErreurValidation, exigerUuidParam, pagination, Valideur } from '../comm
 import { PG_POOL } from '../db/db.module.js';
 import { enTransaction } from '../db/transaction.js';
 import { ExigeDroit } from '../habilitation/acces.decorators.js';
+import { PerimetreService } from '../habilitation/perimetre.service.js';
 import { JournalService } from '../journal/journal.service.js';
 import { type Contexte, ContexteCourant } from '../utilisateurs/contexte.js';
 
@@ -34,6 +35,7 @@ export class AudiencesController {
   constructor(
     @Inject(PG_POOL) private readonly pool: Pool,
     private readonly journal: JournalService,
+    private readonly perimetre: PerimetreService,
   ) {}
 
   private async lire(q: Pick<Pool, 'query'>, ctx: Contexte, id: string) {
@@ -45,14 +47,23 @@ export class AudiencesController {
     return rows[0] as Record<string, unknown>;
   }
 
-  /** Verrouille l'audience ET sa demande, dans cet ordre, pour éviter deux changements simultanés. */
+  /**
+   * Verrouille l'audience ET sa demande, dans cet ordre, pour éviter deux changements simultanés,
+   * puis contrôle le périmètre du suivi sur l'agenda de l'audience (HYPOTHESE(DEC-32)).
+   */
   private async verrouiller(c: PoolClient, ctx: Contexte, id: string) {
-    const { rows } = await c.query<{ statut: StatutAudience; demande_id: string }>(
-      `SELECT statut, demande_id FROM audience WHERE id=$1 AND organisation_id=$2 FOR UPDATE`,
+    const { rows } = await c.query<{
+      statut: StatutAudience;
+      demande_id: string;
+      agenda_id: string;
+    }>(
+      `SELECT statut, demande_id, agenda_id FROM audience
+        WHERE id=$1 AND organisation_id=$2 FOR UPDATE`,
       [id, ctx.organisationId],
     );
     if (!rows[0]) throw new NotFoundException('Audience introuvable.');
     await c.query(`SELECT 1 FROM demande WHERE id=$1 FOR UPDATE`, [rows[0].demande_id]);
+    await this.perimetre.exiger(c, ctx, rows[0].agenda_id, 'suivi');
     return rows[0];
   }
 
@@ -119,6 +130,7 @@ export class AudiencesController {
       );
       if (!ag.rowCount)
         throw new ErreurValidation([{ champ: 'agenda_id', message: 'Référence inconnue.' }]);
+      await this.perimetre.exiger(c, ctx, agenda, 'decision');
       if (responsableId) {
         const r = await c.query(
           `SELECT 1 FROM utilisateur WHERE id=$1 AND organisation_id=$2 AND actif`,

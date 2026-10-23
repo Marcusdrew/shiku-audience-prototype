@@ -70,7 +70,24 @@ if (agendas.statut !== 200 || !agendas.corps.elements?.length) {
   );
   process.exit(1);
 }
-const agendaId = agendas.corps.elements[0].id;
+// DEC-32 : l'agenda du parcours doit être rattaché (et en vigueur) à l'Autorité de test.
+const agendasAutorite = await appel("authority", "GET", "/agendas");
+const rattache = agendasAutorite.corps.elements?.find((a) =>
+  a.rattachements?.some((r) => r.est_moi && r.en_vigueur),
+);
+attendre(
+  Boolean(rattache),
+  "un agenda est rattaché à l’Autorité de test (DEC-32, amorçage fait)",
+  agendasAutorite,
+);
+if (!rattache) {
+  console.log(
+    "Relancez : node --env-file=.env scripts/amorcer-donnees-test.mjs (rattachement initial)",
+  );
+  process.exit(1);
+}
+const agendaId = rattache.id;
+const autoriteId = rattache.rattachements.find((r) => r.est_moi).autorite_id;
 
 const horodatage = new Date().toISOString();
 const nom = `PARCOURS ${horodatage}`;
@@ -266,6 +283,60 @@ await refuse(
 );
 
 // Gestion des comptes : l'Administrateur, via le compte de service Keycloak (vrai Keycloak ici).
+// DEC-32 : nouvel agenda proposé avec son Autorité ; décision refusée tant que le rattachement
+// n'est pas autorisé (Autorité) puis appliqué (Administrateur).
+const nouvelAgenda = await appel("administrator", "POST", "/agendas", {
+  nom: `PARCOURS agenda ${horodatage}`,
+  autorite_id: autoriteId,
+});
+attendre(
+  nouvelAgenda.statut === 201 &&
+    nouvelAgenda.corps.rattachement?.statut === "propose",
+  "l’administrateur crée un agenda avec son Autorité (rattachement proposé)",
+  nouvelAgenda,
+);
+const demandeLibre = await appel("reception", "POST", "/demandes", {
+  visiteur_id: v.corps.id,
+  agenda_id: nouvelAgenda.corps.id,
+  objet: "Parcours : agenda à rattacher (fictif)",
+  contact: "parcours@exemple.invalid",
+});
+const decisionLibre = await appel(
+  "authority",
+  "POST",
+  `/demandes/${demandeLibre.corps?.id}/decision`,
+  { type: "differer", motif: "Essai de périmètre (fictif)" },
+);
+attendre(
+  demandeLibre.statut === 201 && decisionLibre.statut === 409,
+  "agenda non rattaché : la décision est refusée (409, file « à rattacher »)",
+  decisionLibre,
+);
+const rid = nouvelAgenda.corps.rattachement?.id;
+const autorise = await appel(
+  "authority",
+  "POST",
+  `/rattachements/${rid}/autoriser`,
+);
+const applique = await appel(
+  "administrator",
+  "POST",
+  `/rattachements/${rid}/appliquer`,
+);
+const decisionApres = await appel(
+  "authority",
+  "POST",
+  `/demandes/${demandeLibre.corps?.id}/decision`,
+  { type: "differer", motif: "Essai de périmètre (fictif)" },
+);
+attendre(
+  autorise.statut === 200 &&
+    applique.statut === 200 &&
+    decisionApres.statut === 201,
+  "l’Autorité autorise, l’Administrateur applique : la décision devient possible",
+  decisionApres,
+);
+
 const courriel = `parcours.${Date.now()}@example.test`;
 const nu = await appel("administrator", "POST", "/utilisateurs", {
   prenom: "Parcours",

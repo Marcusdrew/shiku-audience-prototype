@@ -77,6 +77,7 @@ describe('matrice officielle (Gate 02A)', () => {
     expect(Object.keys(OFFICIEL)).toHaveLength(26);
     for (const e of hors) expect(e.hypothese, `${e.nom} sans hypothèse`).toBeTruthy();
     expect(hors.map((e) => e.nom).sort()).toEqual([
+      'agenda.autoriser_rattachement',
       'agenda.lister',
       'audience.cloturer',
       'audience.consulter',
@@ -152,6 +153,15 @@ describe('matrice officielle (Gate 02A)', () => {
     expect(s.estAutorise(['authority'], 'visiteur.modifier')).toBe(true);
     expect(s.estAutorise(['reception'], 'visiteur.modifier')).toBe(false);
     expect(s.estAutorise(['administrator'], 'visiteur.modifier')).toBe(false);
+  });
+
+  it('rattachement d’agenda (DEC-32) : l’Autorité autorise ; l’Administrateur applique (agenda.administrer)', () => {
+    const s = new HabilitationService(MATRICE_OFFICIELLE);
+    expect(s.estAutorise(['authority'], 'agenda.autoriser_rattachement')).toBe(true);
+    for (const r of ['administrator', 'assistant', 'reception'] as const)
+      expect(s.estAutorise([r], 'agenda.autoriser_rattachement'), r).toBe(false);
+    expect(s.estAutorise(['administrator'], 'agenda.administrer')).toBe(true);
+    expect(s.estAutorise(['authority'], 'agenda.administrer')).toBe(false);
   });
 
   it('la clôture (arbitrage du 19/10) : Autorité et Assistant, pas la Réception ni l’Administrateur', () => {

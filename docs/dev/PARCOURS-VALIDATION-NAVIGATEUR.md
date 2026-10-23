@@ -15,8 +15,8 @@ Dans PowerShell, à la racine du dépôt :
 | 0.3 | `node --env-file=.env scripts/verifier-compte-service.mjs` | pas de « ABSENT » ; sinon étape 0.4 |
 | 0.4 | `node --env-file=.env scripts/configurer-compte-service.mjs` puis `… --appliquer` | « fait : créer le client shiku-service » (voir `COMPTES-KEYCLOAK.md`) ; puis `docker compose restart app` |
 | 0.4 bis | `node --env-file=.env scripts/aligner-comptes-test.mjs` (puis `--appliquer` si « À FAIRE ») | 5 lignes `OK` : les comptes de test acceptent les mots de passe de `.env` (voir `COMPTES-KEYCLOAK.md`) |
-| 0.5 | `node --env-file=.env scripts/amorcer-donnees-test.mjs` | « OK : organisation …, 5 comptes rattachés, 2 agendas » |
-| 0.6 | `node --env-file=.env scripts/verifier-parcours.mjs` | 33 lignes `OK` (30 avant le lot L1), puis `RESULTAT : TOUT OK` (parcours par l'API, sans navigateur) |
+| 0.5 | `node --env-file=.env scripts/amorcer-donnees-test.mjs` | « OK : organisation …, 5 comptes rattachés, 2 agendas ; N rattachement(s) initial(aux) à l'Autorité » (N = agendas jamais rattachés ; 0 au lancement suivant) |
+| 0.6 | `node --env-file=.env scripts/verifier-parcours.mjs` | 37 lignes `OK` (30 avant L1, 33 avant L4), puis `RESULTAT : TOUT OK` (parcours par l'API, sans navigateur) |
 | 0.7 | `pnpm dev:frontend` | Vite écoute sur `http://localhost:5173` |
 
 Si Keycloak n'écoute pas sur le port 8080 (`KEYCLOAK_PORT` de `.env`), créez `frontend/.env.local` avec `VITE_KEYCLOAK_URL=http://localhost:<KEYCLOAK_PORT>` avant 0.7. Le frontend appelle l'API par `/api` (proxy Vite vers `APP_PORT`).
@@ -79,7 +79,10 @@ Utilisez une **fenêtre de navigation privée par rôle** (ou « Se déconnecter
 | 4.4 | Autorité | Journal → filtre « audience » | Entrées `audience.planifier`, `audience.demarrer`, `audience.terminer`, `audience.cloturer` avec leur auteur |
 | 4.5 | Administrateur (`admin.test`) | Menu | Agendas, Administration (et tableau de bord) ; ni Demandes, ni Journal |
 | 4.6 | Administrateur | Administration → « Créer un compte » | Rôles proposés : Réception, Assistant **seulement** ; création d'un compte fictif `…@example.test` → il apparaît dans la liste (exige l'étape 0.4) |
-| 4.7 | Administrateur | Agendas → créer un agenda fictif | Agenda ajouté |
+| 4.7 | Administrateur | Agendas → créer un agenda fictif en choisissant l'Autorité de rattachement (« Aude Test-Autorité ») | Agenda ajouté, « Proposé — à autoriser par l'Autorité » et badge « À rattacher » |
+| 4.7 bis | Réception | Demandes → cocher « File « à rattacher » » | Seules les demandes d'agendas sans Autorité rattachée |
+| 4.7 ter | Autorité | Agendas → ligne de l'agenda de 4.7 → « Autoriser » | « Autorisé — à appliquer par l'Administrateur » |
+| 4.7 quater | Administrateur | Agendas → « Appliquer » | « Actif » ; le badge « À rattacher » disparaît |
 | 4.8 | Tous | Console du navigateur (F12) | Aucune erreur JavaScript |
 
 Le compte créé en 4.6 n'a pas de mot de passe : sans serveur de courriel, il se définit dans la console Keycloak (limite connue, `COMPTES-KEYCLOAK.md`).

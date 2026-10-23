@@ -16,6 +16,7 @@ import { PG_POOL } from '../db/db.module.js';
 import { enTransaction } from '../db/transaction.js';
 import { ExigeDroit } from '../habilitation/acces.decorators.js';
 import { HabilitationService } from '../habilitation/habilitation.service.js';
+import { PerimetreService, SQL_RATTACHEMENT_ACTIF } from '../habilitation/perimetre.service.js';
 import { JournalService } from '../journal/journal.service.js';
 import { STATUTS_DECIDABLES, type StatutDemande, transitionPermise } from '../demandes/statuts.js';
 import { type Contexte, ContexteCourant } from '../utilisateurs/contexte.js';
@@ -38,9 +39,15 @@ export class DecisionsController {
     @Inject(PG_POOL) private readonly pool: Pool,
     private readonly journal: JournalService,
     private readonly habilitation: HabilitationService,
+    private readonly perimetre: PerimetreService,
   ) {}
 
-  /** File des demandes en attente de décision. Tri : chronologie seule (voir docs/dev/API.md). */
+  /**
+   * File des demandes en attente de décision, limitée aux agendas rattachés à l'Autorité qui consulte ;
+   * pour l'Assistant, aux agendas rattachés à une Autorité (HYPOTHESE(DEC-32), en attendant le
+   * périmètre par délégation). Les demandes d'un agenda sans rattachement sont dans la file « à rattacher »
+   * (`GET /demandes?a_rattacher=true`). Tri : chronologie seule (voir docs/dev/API.md).
+   */
   @Get('decisions/file')
   @ExigeDroit('decision.consulter')
   async file(@ContexteCourant() ctx: Contexte, @Query() q: Record<string, unknown>) {
@@ -50,8 +57,18 @@ export class DecisionsController {
               v.nom_complet AS visiteur_nom, a.nom AS agenda_nom
          FROM demande d JOIN visiteur v ON v.id = d.visiteur_id JOIN agenda a ON a.id = d.agenda_id
         WHERE d.organisation_id = $1 AND d.statut = ANY($2::text[])
+          AND EXISTS (SELECT 1 FROM rattachement_agenda r
+                       WHERE r.organisation_id = d.organisation_id AND r.agenda_id = d.agenda_id
+                         AND (NOT $6 OR r.autorite_id = $5) AND ${SQL_RATTACHEMENT_ACTIF})
         ORDER BY d.cree_le ASC, d.reference ASC LIMIT $3 OFFSET $4`,
-      [ctx.organisationId, STATUTS_DECIDABLES, limite, decalage],
+      [
+        ctx.organisationId,
+        STATUTS_DECIDABLES,
+        limite,
+        decalage,
+        ctx.utilisateurId,
+        ctx.identite.roles.includes('authority'),
+      ],
     );
     return { elements: rows, limite, decalage };
   }
@@ -76,11 +93,12 @@ export class DecisionsController {
       throw new ForbiddenException('Droit insuffisant.');
 
     return enTransaction(this.pool, async (c) => {
-      const cur = await c.query<{ statut: StatutDemande }>(
-        `SELECT statut FROM demande WHERE id=$1 AND organisation_id=$2 FOR UPDATE`,
+      const cur = await c.query<{ statut: StatutDemande; agenda_id: string }>(
+        `SELECT statut, agenda_id FROM demande WHERE id=$1 AND organisation_id=$2 FOR UPDATE`,
         [id, ctx.organisationId],
       );
       if (!cur.rows[0]) throw new NotFoundException('Demande introuvable.');
+      await this.perimetre.exiger(c, ctx, cur.rows[0].agenda_id, 'decision');
       const de = cur.rows[0].statut;
       const vers = STATUT_CIBLE[type!];
       if (!STATUTS_DECIDABLES.includes(de) || !transitionPermise(de, vers))

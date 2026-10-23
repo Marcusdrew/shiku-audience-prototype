@@ -8,6 +8,9 @@
 // Le `sub` de chaque compte est lu dans Keycloak (API d'administration) : jamais saisi à la main.
 //
 // HYPOTHESE H6 : le rattachement est un acte d'administration explicite, pas automatique.
+// DEC-32 (règle provisoire du 22/10/2026) : au MVP, l'unique Autorité est rattachée à tous les agendas
+// par la donnée initiale, journalisée « initialisation système ». Seuls les agendas qui n'ont JAMAIS eu
+// de rattachement sont concernés : une révocation faite dans l'application n'est pas annulée.
 // HYPOTHESE H7 : le nom d'organisation ci-dessous est fictif, à remplacer par le métier.
 import { createRequire } from "node:module";
 
@@ -111,9 +114,40 @@ try {
        ON CONFLICT (organisation_id, nom) DO NOTHING`,
       [org.id, nom, admin.id],
     );
+  const autorite = (
+    await db.query("SELECT id FROM utilisateur WHERE keycloak_sub = $1", [
+      subs.get("authority.test"),
+    ])
+  ).rows[0];
+  const initiaux = await db.query(
+    `INSERT INTO rattachement_agenda (organisation_id, agenda_id, autorite_id, statut, source,
+                                      propose_par, applique_par, applique_le)
+     SELECT a.organisation_id, a.id, $2, 'actif', 'initialisation_systeme', $3, $3, now()
+       FROM agenda a
+      WHERE a.organisation_id = $1 AND a.actif
+        AND NOT EXISTS (SELECT 1 FROM rattachement_agenda r WHERE r.agenda_id = a.id)
+     RETURNING id, agenda_id`,
+    [org.id, autorite.id, admin.id],
+  );
+  for (const r of initiaux.rows)
+    await db.query(
+      `INSERT INTO journal (organisation_id, utilisateur_id, action, objet_type, objet_id, contexte)
+       VALUES ($1, $2, 'rattachement_agenda.initialiser', 'rattachement_agenda', $3, $4::jsonb)`,
+      [
+        org.id,
+        admin.id,
+        r.id,
+        JSON.stringify({
+          source: "initialisation_systeme",
+          agenda_id: r.agenda_id,
+          autorite_id: autorite.id,
+        }),
+      ],
+    );
   await db.query("COMMIT");
   console.log(
-    `OK : organisation « ${NOM_ORG} », ${COMPTES.length} comptes rattachés, ${AGENDAS.length} agendas.`,
+    `OK : organisation « ${NOM_ORG} », ${COMPTES.length} comptes rattachés, ${AGENDAS.length} agendas` +
+      ` ; ${initiaux.rowCount} rattachement(s) initial(aux) à l’Autorité (initialisation système).`,
   );
 } catch (e) {
   await db.query("ROLLBACK").catch(() => undefined);
