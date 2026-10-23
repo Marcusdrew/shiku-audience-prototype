@@ -54,6 +54,8 @@ jobs:
           node-version: 24
       - name: Arbre de travail
         run: node scripts/controles-commit.mjs arbre
+      - name: Registre des hypothèses (HYPOTHESES.md ↔ marqueurs du code)
+        run: node scripts/controle-hypotheses.mjs
       - name: Historique complet (les valeurs ne sont jamais affichées)
         run: node scripts/controles-commit.mjs historique
       - name: Messages de commit de la pull request

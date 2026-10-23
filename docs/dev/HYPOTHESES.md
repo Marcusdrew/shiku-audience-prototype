@@ -3,6 +3,22 @@
 État : 22 octobre 2026, après les réponses de M. Jordan (matrice RBAC Gate 02A, `Reponse_Jordan.docx`, arbitrages du 19/10 et réponses du 22/10).
 Rien ci-dessous n'est une décision validée sauf mention explicite. Une hypothèse est marquée `HYPOTHESE` dans le code.
 
+## Registre des marqueurs HYPOTHESE(DEC-xx)
+
+Exigé par M. Jordan le 23/10/2026 (réponse à Q-15) : les règles provisoires sont fusionnées avec leur marqueur et la mention « signature attendue », sans attendre les actes. Chaque marqueur `HYPOTHESE(DEC-xx)` du code (backend, migrations, frontend, scripts) doit figurer ici ; chaque ligne « oui » doit avoir au moins un marqueur dans le code. Contrôle : `pnpm hypotheses:check`, lancé par la CI. Les règles de sécurité (droit côté serveur, journal protégé, aucun secret, données fictives) ne sont jamais des hypothèses.
+
+| DEC | Sujet | État | Dans le code |
+| --- | --- | --- | --- |
+| DEC-04 | Versions de la pile (Node, pnpm, PostgreSQL, Keycloak) | à fixer par le représentant habilité | oui |
+| DEC-28 | Cadre du frontend et visibilité des entrées par rôle | à décider | oui |
+| DEC-32 | Périmètre de l'Autorité : rattachement aux agendas | provisoire, signature attendue | oui |
+| DEC-33 | Clôture : délégation, rectification, motif d'écart | provisoire, signature attendue | oui |
+| DEC-34 | Libellé « Non retenue — ne pas planifier » de la Réception | provisoire, signature attendue | oui |
+| DEC-35 | Tolérance de 15 minutes pour le motif d'écart | provisoire, à appliquer (lot L5) | non |
+| DEC-36 | Visiteur : modification, identité minimale, masquage | provisoire, signature attendue | oui |
+| DEC-37 | Priorité : qui la fixe, valeurs des critères | provisoire, signature attendue | oui |
+| DEC-38 | Classification du journal, refus journalisés, rôle `shiku_audit`, contenu du journal | provisoire (ACTE-DEC-38), à appliquer (lots L2, L3) | non |
+
 ## Levées par la matrice officielle
 
 | #   | Sujet                              | Statut                                                                          |

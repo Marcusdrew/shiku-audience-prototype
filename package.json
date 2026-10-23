@@ -18,6 +18,7 @@
     "typecheck": "pnpm -r --if-present typecheck",
     "doctor": "node scripts/doctor.mjs",
     "test:scripts": "node --test \"scripts/*.test.mjs\"",
-    "scan:secrets": "node scripts/controles-commit.mjs arbre && node scripts/controles-commit.mjs historique"
+    "scan:secrets": "node scripts/controles-commit.mjs arbre && node scripts/controles-commit.mjs historique",
+    "hypotheses:check": "node scripts/controle-hypotheses.mjs"
   }
 }

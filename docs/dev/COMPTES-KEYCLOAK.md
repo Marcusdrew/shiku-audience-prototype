@@ -43,7 +43,9 @@ KC_VERIFIER_REDUIT=1 node --env-file=.env scripts/verifier-compte-service.mjs   
 - Mesuré (même Keycloak jetable) : Réception et Assistant attribuables ; `authority` et `administrator` refusés (403) ; réglages du realm, groupes, rôles du realm, clients, événements d'administration et usurpation refusés (403) ; le backend ne voit plus que `assistant` et `reception` comme rôles disponibles. Retour arrière vérifié.
 - Effet de bord : les permissions fines sont activées pour tout le realm `shiku`. L'administrateur du realm `master` garde ses accès (vérifié) ; aucun autre administrateur de ce realm n'a été mesuré.
 
-**Risques résiduels, non levés (décisions de M. Jordan attendues, questions Q-7 et Q-8) :**
+**Garde-fou dans le code (exigé par M. Jordan le 23/10/2026) :** `backend/test/keycloak-mot-de-passe.spec.ts` échoue si le backend appelle une opération de définition de mot de passe (`reset-password`, `/credentials`, `credentials` ou `temporary` à la création d'un compte), ou si un autre module que `keycloak/keycloak-admin.service.ts` appelle l'API d'administration de Keycloak. Les autres contre-mesures (permissions fines, événements d'administration, alerte) relèvent du lot L7.
+
+**Risques résiduels, non levés (limite acceptée par M. Jordan le 22/10/2026, contre-mesures en cours) :**
 - la permission « gérer » les comptes inclut encore la **définition d'un mot de passe** (constat affiché par la vérification) ; un refus explicite de « reset-password » bloque toutes les opérations sur les comptes dans Keycloak 26.8.0 ;
 - elle s'applique à **tous** les comptes du realm, y compris ceux de l'Autorité et de l'Administrateur ;
 - l'attribution des rôles Autorité et Administrateur « sur autorisation de l'Autorité » n'a pas d'exécutant technique compatible avec cette réduction (Q-7).
