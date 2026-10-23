@@ -101,7 +101,11 @@ export class DecisionsController {
         [id, ctx.organisationId],
       );
       if (!cur.rows[0]) throw new NotFoundException('Demande introuvable.');
-      await this.perimetre.exiger(c, ctx, cur.rows[0].agenda_id, 'decision');
+      await this.perimetre.exiger(c, ctx, cur.rows[0].agenda_id, 'decision', {
+        action: `decision.${type!}`,
+        objetType: 'demande',
+        objetId: id,
+      });
       const de = cur.rows[0].statut;
       const vers = STATUT_CIBLE[type!];
       if (!STATUTS_DECIDABLES.includes(de) || !transitionPermise(de, vers))

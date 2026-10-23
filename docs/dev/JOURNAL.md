@@ -7,9 +7,15 @@ Le journal (`journal`, migration `1760000200000`) est **protégé contre la modi
 1. Le rôle applicatif `shiku_app` n'a que `SELECT` et `INSERT` (ni `UPDATE`, `DELETE` ni `TRUNCATE`). Un administrateur applicatif n'est qu'un compte de l'application : il n'a pas d'autre droit en base.
 2. Un déclencheur `BEFORE UPDATE` et un déclencheur `BEFORE TRUNCATE` refusent toute modification, même si un rôle recevait le droit par erreur.
 3. Un déclencheur `BEFORE INSERT` impose l'horodatage `clock_timestamp()` du serveur de base : l'application ne choisit pas la date (limite L5 de `PREUVES-AJOUT-SEUL.md` levée pour cette table).
-4. Chaque entrée est écrite dans la **même transaction** que l'acte (tout ou rien) et attribuée à un compte nominatif (`utilisateur_id NOT NULL`).
+4. Chaque entrée est écrite dans la **même transaction** que l'acte (tout ou rien) et attribuée à un compte nominatif. Seule exception, depuis L2 : les entrées de l'initialisation (`scripts/amorcer-donnees-test.mjs`), au nom du « système » (`auteur = 'systeme'`, sans compte) ; une contrainte impose une personne **ou** le système. Les refus d'actions sensibles sont écrits hors de la transaction annulée, avec `resultat = 'refuse'`.
 5. Aucune route HTTP ne modifie ni ne supprime le journal ; `GET /journal` est en lecture seule.
-6. Le contenu journalisé se limite à des identifiants, noms de champs modifiés et décisions : pas de texte libre sensible (une entrée ne peut pas être purgée avant 6 ans).
+6. Le contenu journalisé se limite à des identifiants, des codes, des nombres et des noms de champs modifiés (Q-5, 23/10/2026) : ni texte libre, ni nom du personnel, ni nom d'agenda, résolus à l'affichage ; une entrée ne peut pas être purgée avant 6 ans.
+
+## Catégories et vue de l'Autorité (lot L2, `HYPOTHESE(DEC-38)`)
+
+- Dix catégories, énumération fermée dans `backend/src/journal/categories.ts` ; chaque action en a exactement une. La catégorie se **déduit** de l'action (elle n'est pas une colonne : les entrées antérieures ne peuvent pas être complétées). Une action non classée est refusée à l'écriture, et `journal-categories.spec.ts` échoue.
+- L'Autorité, seul rôle qui lit le journal, voit : consultation du dossier relationnel, droits et délégations, priorité, signalement et revue, plus toute entrée « sous délégation ». Elle ne voit ni « décisions et audiences » ni « comptes et accès ». `GET /journal/purges` lui donne le récapitulatif des purges de son organisation (date, volume, période, volume par catégorie), jamais le contenu purgé.
+- Refus journalisés : rôle hors liste blanche, décision hors périmètre d'agenda, lecture du journal sans accès ; regroupés par personne et par action (fenêtre de 10 minutes, compteur `journal_refus_regroupe`). Les autres refus ne sont pas journalisés.
 
 ## Limites connues (non levées)
 
@@ -17,7 +23,8 @@ Le journal (`journal`, migration `1760000200000`) est **protégé contre la modi
 - Le rôle `shiku_purge` peut supprimer des lignes sans borne d'ancienneté (L3) : la règle des 6 ans (module de conservation) n'est pas développée.
 - Aucune chaîne de hachage ni copie externe : une altération faite en tant que propriétaire ne serait pas détectée.
 - Aucune alerte en cas d'accès au journal (non développée).
-- Seules les actions listées dans `API.md` écrivent au journal. Les consultations de données ne sont pas journalisées.
+- Seules les actions listées dans `API.md` écrivent au journal. Les consultations de données ne sont pas journalisées, ni les lectures du journal par l'Autorité (seules les lectures refusées le sont).
+- Aucune personne ne voit dans l'application les entrées « décisions et audiences » ni « comptes et accès » : c'est la décision du 22/10. Elles restent en base ; l'accès temporaire de l'Administrateur (L3) et le rôle de lecture `shiku_audit` (Q-3) sont à venir.
 
 ## Rôle de lecture d'audit `shiku_audit` sur un volume déjà initialisé
 

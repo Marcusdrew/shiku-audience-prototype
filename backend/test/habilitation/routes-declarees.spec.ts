@@ -28,6 +28,7 @@ const ROUTES_ATTENDUES = [
   '/ priorite',
   'droits lire',
   'journal lister',
+  'journal purges',
   'moi lire',
   'rattachements appliquer',
   'rattachements autoriser',

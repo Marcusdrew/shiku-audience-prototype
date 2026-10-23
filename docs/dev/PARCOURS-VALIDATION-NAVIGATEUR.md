@@ -16,7 +16,7 @@ Dans PowerShell, à la racine du dépôt :
 | 0.4 | `node --env-file=.env scripts/configurer-compte-service.mjs` puis `… --appliquer` | « fait : créer le client shiku-service » (voir `COMPTES-KEYCLOAK.md`) ; puis `docker compose restart app` |
 | 0.4 bis | `node --env-file=.env scripts/aligner-comptes-test.mjs` (puis `--appliquer` si « À FAIRE ») | 5 lignes `OK` : les comptes de test acceptent les mots de passe de `.env` (voir `COMPTES-KEYCLOAK.md`) |
 | 0.5 | `node --env-file=.env scripts/amorcer-donnees-test.mjs` | « OK : organisation …, 5 comptes rattachés, 2 agendas ; N rattachement(s) initial(aux) à l'Autorité » (N = agendas jamais rattachés ; 0 au lancement suivant) |
-| 0.6 | `node --env-file=.env scripts/verifier-parcours.mjs` | 40 lignes `OK` (30 avant L1, 33 avant L4, 37 avant L6), puis `RESULTAT : TOUT OK` (parcours par l'API, sans navigateur) |
+| 0.6 | `node --env-file=.env scripts/verifier-parcours.mjs` | 43 lignes `OK` (30 avant L1, 33 avant L4, 37 avant L6, 40 avant L2), puis `RESULTAT : TOUT OK` (parcours par l'API, sans navigateur) |
 | 0.7 | `pnpm dev:frontend` | Vite écoute sur `http://localhost:5173` |
 
 Si Keycloak n'écoute pas sur le port 8080 (`KEYCLOAK_PORT` de `.env`), créez `frontend/.env.local` avec `VITE_KEYCLOAK_URL=http://localhost:<KEYCLOAK_PORT>` avant 0.7. Le frontend appelle l'API par `/api` (proxy Vite vers `APP_PORT`).
@@ -78,7 +78,8 @@ Utilisez une **fenêtre de navigation privée par rôle** (ou « Se déconnecter
 | 4.1 | Réception | Rouvrir la fiche clôturée | Statut « Clôturée » ; ni décisions, ni audience, ni bouton « Clôturer » |
 | 4.2 | Autorité | Créer une 2ᵉ demande (ou en prendre une « Reçue »), saisir un motif → « Rejeter » | Statut « Rejetée » chez l'Autorité |
 | 4.3 | Réception | Ouvrir cette demande ; filtre de statut de la liste | « Non retenue — ne pas planifier », sans motif ni auteur ; le filtre ne propose pas « Rejetée » |
-| 4.4 | Autorité | Journal → filtre « audience » | Entrées `audience.planifier`, `audience.demarrer`, `audience.terminer`, `audience.cloturer` avec leur auteur |
+| 4.4 | Autorité | Journal | Colonnes Catégorie et Résultat ; **aucune** entrée de demande, décision, audience ou compte (vue limitée, HYPOTHESE(DEC-38)) ; le filtre « Catégorie » ne propose que quatre catégories ; « Priorité » montre `demande.changer_priorite` de 2.2 bis ; carte « Purges du journal (récapitulatif) » |
+| 4.4 bis | Autorité | Journal, après 4.6 | Catégorie « Droits et délégations » : `role.attribuer` « Accepté » (compte de 4.6) ; `role.attribuer` « Refusé », produit par l'étape 0.6 (le script tente de créer un compte Autorité) ; sur une base amorcée avant L2, les rattachements initiaux restent au nom de l'administrateur de test (ajout seul) : l'auteur « Système » n'apparaît que sur une base neuve |
 | 4.5 | Administrateur (`admin.test`) | Menu | Agendas, Administration (et tableau de bord) ; ni Demandes, ni Journal |
 | 4.6 | Administrateur | Administration → « Créer un compte » | Rôles proposés : Réception, Assistant **seulement** ; création d'un compte fictif `…@example.test` → il apparaît dans la liste (exige l'étape 0.4) |
 | 4.7 | Administrateur | Agendas → créer un agenda fictif en choisissant l'Autorité de rattachement (« Aude Test-Autorité ») | Agenda ajouté, « Proposé — à autoriser par l'Autorité » et badge « À rattacher » |
@@ -91,7 +92,7 @@ Le compte créé en 4.6 n'a pas de mot de passe : sans serveur de courriel, il s
 
 ## Ce qui est hors du parcours (non développé ou en attente de décision)
 
-Salle d'attente et appel des visiteurs, annulation et reprogrammation, délégations, dossier relationnel (notes, attestations), formule de priorité (non définie), indicateurs du tableau de bord, restrictions du journal par catégorie (Q-1), périmètre de l'Autorité (Q-10), réinitialisation de mot de passe (Q-6 à Q-8). Voir `ETAT-FONCTIONNEL.md` et `HYPOTHESES.md`.
+Salle d'attente et appel des visiteurs, annulation et reprogrammation, délégations, dossier relationnel (notes, attestations), formule de priorité (non définie), indicateurs du tableau de bord, accès temporaire de l'Administrateur au journal (L3), réinitialisation de mot de passe (Q-6 à Q-8). Voir `ETAT-FONCTIONNEL.md` et `HYPOTHESES.md`.
 
 ## Déjà exécuté par l'assistant (environnement Linux, pas votre poste)
 

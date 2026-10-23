@@ -2,8 +2,9 @@
 // action sensible n'échappe à la journalisation »). Deux tests s'appuient dessus :
 //  - routes-declarees.spec.ts : toute route non-GET de l'application DOIT figurer ici ;
 //  - db/api-metier.spec.ts : chaque action listée a réellement produit une entrée attribuée.
-// Les LECTURES, les REFUS et l'administration directe de Keycloak ne sont PAS journalisés : la règle
-// métier n'est pas arrêtée (voir docs/dev/JOURNAL.md, « Ce qui n'est pas journalisé »).
+// Les LECTURES et l'administration directe de Keycloak ne sont PAS journalisées (docs/dev/JOURNAL.md,
+// « Ce qui n'est pas journalisé »). Seuls les refus SENSIBLES le sont (HYPOTHESE(DEC-38)) : voir
+// ACTIONS_HORS_ROUTES. Chaque action a une catégorie (test journal-categories.spec.ts).
 export const MUTATIONS_JOURNALISEES: Readonly<Record<string, readonly string[]>> = {
   'agendas creer': ['agenda.creer', 'rattachement_agenda.proposer'],
   'agendas rattacher': ['rattachement_agenda.proposer'],
@@ -22,6 +23,14 @@ export const MUTATIONS_JOURNALISEES: Readonly<Record<string, readonly string[]>>
   'audiences demarrer': ['audience.demarrer'],
   'audiences terminer': ['audience.terminer'],
   'audiences cloturer': ['audience.cloturer'],
-  'utilisateurs creer': ['utilisateur.creer'],
+  'utilisateurs creer': ['utilisateur.creer', 'role.attribuer'],
   'utilisateurs rattachement': ['utilisateur.rattacher'],
 };
+
+// Actions écrites hors d'une route de mutation : refus sensible relevé par la garde (lecture du journal
+// sans accès) et entrées de l'initialisation, au nom du « système » (scripts/amorcer-donnees-test.mjs).
+export const ACTIONS_HORS_ROUTES: readonly string[] = [
+  'journal.consulter',
+  'systeme.initialiser',
+  'rattachement_agenda.initialiser',
+];

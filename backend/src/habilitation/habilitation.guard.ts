@@ -4,12 +4,22 @@ import {
   ForbiddenException,
   Injectable,
   Logger,
+  Optional,
   UnauthorizedException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { RequeteAuthentifiee } from '../auth/identite.js';
 import { ACCES, type Acces } from './acces.decorators.js';
+import { RefusSensiblesService } from '../journal/refus-sensibles.service.js';
 import { HabilitationService } from './habilitation.service.js';
+
+/**
+ * Refus journalisés dès la garde (HYPOTHESE(DEC-38), point 1 e) : lecture du journal sans accès.
+ * Les autres refus de droit ne sont pas journalisés.
+ */
+export const REFUS_SENSIBLES_A_LA_GARDE: Readonly<Record<string, string>> = {
+  'journal.consulter': 'journal',
+};
 
 /**
  * Garde GLOBALE d'autorisation, exécutée après AuthGuard. Refus par défaut :
@@ -24,9 +34,10 @@ export class HabilitationGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
     private readonly habilitation: HabilitationService,
+    @Optional() private readonly refus?: RefusSensiblesService,
   ) {}
 
-  canActivate(contexte: ExecutionContext): boolean {
+  async canActivate(contexte: ExecutionContext): Promise<boolean> {
     const acces = this.reflector.getAllAndOverride<Acces | undefined>(ACCES, [
       contexte.getHandler(),
       contexte.getClass(),
@@ -44,8 +55,12 @@ export class HabilitationGuard implements CanActivate {
     }
     if (acces.type === 'authentifie') return true;
 
-    if (!this.habilitation.estAutorise(identite.roles, acces.action))
+    if (!this.habilitation.estAutorise(identite.roles, acces.action)) {
+      const objetType = REFUS_SENSIBLES_A_LA_GARDE[acces.action];
+      if (objetType && this.refus)
+        await this.refus.signalerParSub(identite.sub, { action: acces.action, objetType });
       throw new ForbiddenException('Droit insuffisant.');
+    }
     return true;
   }
 }

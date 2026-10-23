@@ -50,9 +50,9 @@ async function appel(qui, methode, chemin, corps) {
   return { statut: r.status, corps: t ? JSON.parse(t) : {} };
 }
 const attendre = (ok, texte, r) => verdict(ok, `${texte} (HTTP ${r.statut})`);
-const refuse = async (promesse, texte) => {
+const refuse = async (promesse, texte, statut = 403) => {
   const r = await promesse;
-  attendre(r.statut === 403, texte, r);
+  attendre(r.statut === statut, texte, r);
 };
 
 const moi = await appel("reception", "GET", "/moi");
@@ -291,12 +291,20 @@ const j = await appel(
   `/journal?objet_type=demande&objet_id=${id}`,
 );
 const actions = (j.corps.elements ?? []).map((e) => e.action).reverse();
+// Vue limitée de l'Autorité (Q-1, HYPOTHESE(DEC-38)) : sur cette demande, seul le changement de
+// priorité (catégorie « priorité ») ; création, qualification, critères et décision relèvent de
+// « décisions et audiences », consultées dans les écrans métier, pas dans le journal.
 attendre(
   j.statut === 200 &&
-    actions.join() ===
-      "demande.creer,demande.qualifier,demande.saisir_criteres,demande.changer_priorite,decision.valider",
-  `le journal retrace les actes : ${actions.join(" → ")}`,
+    actions.join() === "demande.changer_priorite" &&
+    j.corps.elements[0]?.categorie === "priorite",
+  `vue limitée du journal de l’autorité sur la demande : ${actions.join(" → ") || "(rien)"}`,
   j,
+);
+await refuse(
+  appel("authority", "GET", "/journal?categorie=decisions_audiences"),
+  "l’autorité ne peut pas demander la catégorie « décisions et audiences »",
+  400,
 );
 await refuse(
   appel("assistant", "GET", "/journal"),
@@ -414,6 +422,31 @@ await refuse(
     role: "authority",
   }),
   "l’administrateur ne peut pas créer un compte Autorité",
+);
+// HYPOTHESE(DEC-38), 1 a et 1 e : rôle attribué = entrée distincte ; refus hors liste blanche journalisé
+// (regroupé par fenêtre de 10 minutes : un lancement rapproché peut ne pas en ajouter un nouveau).
+const jr = await appel(
+  "authority",
+  "GET",
+  "/journal?categorie=droits_delegations&objet_type=utilisateur&limite=200",
+);
+const entreesRole = (jr.corps.elements ?? []).filter(
+  (e) => e.action === "role.attribuer",
+);
+attendre(
+  jr.statut === 200 &&
+    entreesRole.some(
+      (e) => e.objet_id === nu.corps.id && e.resultat === "accepte",
+    ) &&
+    entreesRole.some((e) => e.resultat === "refuse"),
+  "le journal de l’autorité montre le rôle attribué et le refus hors liste blanche",
+  jr,
+);
+const purges = await appel("authority", "GET", "/journal/purges");
+attendre(
+  purges.statut === 200 && Array.isArray(purges.corps.elements),
+  `l’autorité lit le récapitulatif des purges (${purges.corps.elements?.length ?? "?"} ligne(s))`,
+  purges,
 );
 
 // Statut neutre (arbitrage du 19/10) : une demande rejetée apparaît « non_retenue » à la réception.

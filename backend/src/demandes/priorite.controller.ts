@@ -164,7 +164,11 @@ export class PrioriteController {
         );
       v.fin();
       const d = await this.verrouiller(c, ctx, id);
-      await this.perimetre.exiger(c, ctx, d.agenda_id, 'decision');
+      await this.perimetre.exiger(c, ctx, d.agenda_id, 'decision', {
+        action: 'demande.changer_priorite',
+        objetType: 'demande',
+        objetId: id,
+      });
       await c.query(
         `UPDATE demande SET priorite=$3, priorite_justification=$4, priorite_fixee_par=$5,
                 priorite_fixee_le=now(), modifie_le=now()

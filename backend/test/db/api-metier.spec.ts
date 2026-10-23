@@ -9,7 +9,10 @@ import { AuthModule } from '../../src/auth/auth.module.js';
 import { DbModule } from '../../src/db/db.module.js';
 import type { Matrice } from '../../src/habilitation/matrice.js';
 import { SanteController } from '../../src/sante/sante.controller.js';
-import { MUTATIONS_JOURNALISEES } from '../habilitation/mutations-journalisees.js';
+import {
+  ACTIONS_HORS_ROUTES,
+  MUTATIONS_JOURNALISEES,
+} from '../habilitation/mutations-journalisees.js';
 import { demarrerFauxKeycloak, type FauxKeycloak, SECRET_ESSAI } from './faux-keycloak.js';
 import { CLIENT, ISSUER, creerCles, revendications, signer } from '../auth/outils.js';
 
@@ -311,14 +314,22 @@ describe('API métier sur PostgreSQL réel', () => {
         );
         expect(j.rowCount).toBe(1);
         expect(j.rows[0]!.utilisateur_id).toBe(acteurs.administrator.id);
-        expect(j.rows[0]!.contexte).toEqual({
-          nom_complet: 'Fictive Personne',
-          mode: 'creation',
-          role: 'assistant',
-          via: 'compte de service',
-        });
-        // Le courriel (donnée personnelle) n'est pas recopié dans le journal.
+        // Q-5 (23/10/2026) : ni nom ni courriel dans le journal ; le nom est résolu à l'affichage.
+        expect(j.rows[0]!.contexte).toEqual({ mode: 'creation', via: 'compte de service' });
         expect(JSON.stringify(j.rows[0]!.contexte)).not.toContain('example.test');
+        expect(JSON.stringify(j.rows[0]!.contexte)).not.toContain('Fictive');
+        // HYPOTHESE(DEC-38), 1 a : le rôle est une entrée distincte (droits et délégations).
+        const role = await admin.query(
+          `SELECT utilisateur_id, contexte, resultat FROM journal WHERE objet_id=$1 AND action='role.attribuer'`,
+          [r.corps.id],
+        );
+        expect(role.rows).toEqual([
+          {
+            utilisateur_id: acteurs.administrator.id,
+            contexte: { role: 'assistant', via: 'compte de service' },
+            resultat: 'accepte',
+          },
+        ]);
       });
 
       it('seul l’Administrateur peut créer un compte ; sinon 403 et Keycloak n’est même pas appelé', async () => {
@@ -340,6 +351,21 @@ describe('API métier sur PostgreSQL réel', () => {
           expect(r.statut, role).toBe(403);
         }
         expect(kc.appels.length).toBe(avant);
+        // HYPOTHESE(DEC-38), 1 e : refus sensible journalisé (résultat « refuse »), regroupé : les deux
+        // tentatives rapprochées du même Administrateur ne donnent qu'une entrée.
+        const refus = await admin.query(
+          `SELECT contexte, resultat FROM journal
+            WHERE organisation_id=$1 AND utilisateur_id=$2 AND action='role.attribuer' AND resultat='refuse'`,
+          [orgId, acteurs.administrator.id],
+        );
+        expect(refus.rows).toEqual([
+          { contexte: { role: 'authority', motif: 'hors_liste_blanche' }, resultat: 'refuse' },
+        ]);
+        const compteur = await admin.query(
+          `SELECT nombre FROM journal_refus_regroupe WHERE utilisateur_id=$1 AND action='role.attribuer'`,
+          [acteurs.administrator.id],
+        );
+        expect(compteur.rows[0]!.nombre).toBe(2);
         const ok = await appel('administrator', 'POST', '/utilisateurs', {
           ...valide('rec@example.test'),
           role: 'reception',
@@ -1375,6 +1401,18 @@ describe('API métier sur PostgreSQL réel', () => {
         motif: 'Essai',
       });
       expect(hors.statut).toBe(403);
+      // HYPOTHESE(DEC-38), 1 e : tentative de décision hors périmètre, journalisée comme refus.
+      const tentative = await admin.query(
+        `SELECT utilisateur_id, contexte FROM journal
+          WHERE objet_id=$1 AND action='decision.valider' AND resultat='refuse'`,
+        [d],
+      );
+      expect(tentative.rows).toEqual([
+        {
+          utilisateur_id: acteurs.authority.id,
+          contexte: { agenda_id: agendaAutre, motif: 'hors_perimetre' },
+        },
+      ]);
       const file = await appel('authority', 'GET', '/decisions/file?limite=100');
       expect(file.corps.elements.map((x: { id: string }) => x.id)).not.toContain(d);
       const fileAutre = await appel('autreAutorite', 'GET', '/decisions/file?limite=100');
@@ -1419,11 +1457,14 @@ describe('API métier sur PostgreSQL réel', () => {
   });
 
   describe('journal d’audit (US-05-010, US-05-011)', () => {
-    it('retrace la chaîne complète d’une demande, attribuée, dans l’ordre', async () => {
+    it('retrace la chaîne complète d’une demande, attribuée, dans l’ordre (en base)', async () => {
       const id = (globalThis as Record<string, unknown>).__demandeId as string;
-      const r = await appel('authority', 'GET', `/journal?objet_id=${id}&objet_type=demande`);
-      expect(r.statut).toBe(200);
-      const actions = r.corps.elements.map((e: { action: string }) => e.action).reverse();
+      const { rows } = await admin.query<{ action: string; utilisateur_id: string }>(
+        `SELECT action, utilisateur_id FROM journal WHERE objet_id=$1 AND objet_type='demande'
+            AND resultat='accepte' ORDER BY id`,
+        [id],
+      );
+      const actions = rows.map((e) => e.action);
       expect(actions).toEqual([
         'demande.creer',
         'demande.modifier',
@@ -1432,13 +1473,130 @@ describe('API métier sur PostgreSQL réel', () => {
         'decision.differer',
         'decision.valider',
       ]);
-      expect(r.corps.elements[0].utilisateur_nom).toBe('Fictif authority');
+      expect(rows[rows.length - 1]!.utilisateur_id).toBe(acteurs.authority.id);
+    });
+    it('vue limitée de l’Autorité (Q-1, HYPOTHESE(DEC-38)) : ni décisions et audiences, ni comptes et accès', async () => {
+      const id = (globalThis as Record<string, unknown>).__demandeId as string;
+      const r = await appel('authority', 'GET', `/journal?objet_id=${id}&objet_type=demande`);
+      expect(r.statut).toBe(200);
+      expect(r.corps.elements).toEqual([]);
+      const tout = await appel('authority', 'GET', '/journal?limite=200');
+      const categories = new Set(
+        tout.corps.elements.map((e: { categorie: string }) => e.categorie),
+      );
+      expect([...categories].sort()).toEqual(['droits_delegations', 'priorite']);
+      const role = tout.corps.elements.find(
+        (e: { action: string }) => e.action === 'role.attribuer',
+      );
+      expect(role).toMatchObject({
+        categorie: 'droits_delegations',
+        categorie_libelle: 'Droits et délégations',
+        utilisateur_nom: 'Fictif administrator',
+        auteur: 'utilisateur',
+        sous_delegation: false,
+      });
+      expect(tout.corps.categories_visibles.map((c: { code: string }) => c.code)).toEqual([
+        'consultation_dossier_relationnel',
+        'droits_delegations',
+        'priorite',
+        'signalement_revue',
+      ]);
+      const prio = await appel('authority', 'GET', '/journal?categorie=priorite&limite=200');
+      expect(prio.corps.elements.length).toBeGreaterThan(0);
+      for (const e of prio.corps.elements) expect(e.action).toBe('demande.changer_priorite');
+      // Une catégorie hors de sa vue ne s'obtient pas par le filtre.
+      for (const c of ['decisions_audiences', 'comptes_acces', 'inconnue'])
+        expect((await appel('authority', 'GET', `/journal?categorie=${c}`)).statut, c).toBe(400);
+    });
+    it('lecture du journal sans accès : refusée, journalisée une fois par fenêtre (HYPOTHESE(DEC-38))', async () => {
       expect((await appel('assistant', 'GET', '/journal')).statut).toBe(403);
+      expect((await appel('assistant', 'GET', '/journal/purges')).statut).toBe(403);
       // Administrateur : « D » dans la matrice, donc refusé tant qu'aucune délégation n'existe.
       expect((await appel('administrator', 'GET', '/journal')).statut).toBe(403);
+      const refus = await admin.query<{
+        utilisateur_id: string;
+        objet_type: string;
+        resultat: string;
+      }>(
+        `SELECT utilisateur_id, objet_type, resultat FROM journal
+          WHERE organisation_id=$1 AND action='journal.consulter' ORDER BY id`,
+        [orgId],
+      );
+      // Une seule entrée par personne pour ces tentatives rapprochées (regroupement).
+      const parPersonne = new Map<string, number>();
+      for (const r of refus.rows) {
+        expect(r).toMatchObject({ objet_type: 'journal', resultat: 'refuse' });
+        parPersonne.set(r.utilisateur_id, (parPersonne.get(r.utilisateur_id) ?? 0) + 1);
+      }
+      expect(parPersonne.get(acteurs.assistant.id)).toBe(1);
+      expect(parPersonne.get(acteurs.administrator.id)).toBe(1);
+      const n = await admin.query(
+        `SELECT nombre FROM journal_refus_regroupe WHERE utilisateur_id=$1 AND action='journal.consulter'`,
+        [acteurs.assistant.id],
+      );
+      expect(n.rows[0]!.nombre).toBeGreaterThanOrEqual(2);
+      // La Réception aussi est refusée, et un refus ordinaire (autre droit) n'est pas journalisé.
+      expect((await appel('reception', 'GET', '/decisions/file')).statut).toBe(403);
+      const ordinaire = await admin.query(
+        `SELECT 1 FROM journal WHERE utilisateur_id=$1 AND resultat='refuse' AND action <> 'journal.consulter'`,
+        [acteurs.reception.id],
+      );
+      expect(ordinaire.rowCount).toBe(0);
+    });
+    it('regroupement : la fenêtre suivante ouvre une nouvelle entrée qui compte les refus regroupés', async () => {
+      // Fenêtre précédente vieillie en base (le compteur n'est pas le journal, il se met à jour).
+      await admin.query(
+        `UPDATE journal_refus_regroupe SET fenetre_debut = now() - interval '1 hour', nombre = 3
+          WHERE utilisateur_id=$1 AND action='journal.consulter'`,
+        [acteurs.assistant.id],
+      );
+      expect((await appel('assistant', 'GET', '/journal')).statut).toBe(403);
+      const { rows } = await admin.query(
+        `SELECT contexte FROM journal WHERE utilisateur_id=$1 AND action='journal.consulter'
+          ORDER BY id DESC LIMIT 1`,
+        [acteurs.assistant.id],
+      );
+      expect(rows[0]!.contexte).toEqual({ refus_regroupes_precedents: 2 });
+    });
+    it('cloisonnement : une autre organisation ne voit pas ces entrées', async () => {
+      const id = (globalThis as Record<string, unknown>).__demandeId as string;
       expect((await appel('autreOrg', 'GET', `/journal?objet_id=${id}`)).corps.elements).toEqual(
         [],
       );
+      const r = await appel('autreOrg', 'GET', '/journal?limite=200');
+      for (const e of r.corps.elements) expect(e.utilisateur_id).not.toBe(acteurs.administrator.id);
+    });
+    it('récapitulatif des purges (HYPOTHESE(DEC-38), 1 f) : volume, date et catégories de SON organisation', async () => {
+      const autre = (await admin.query<{ id: string }>(`SELECT gen_random_uuid() AS id`)).rows[0]!
+        .id;
+      await admin.query(
+        `INSERT INTO journal_purge (role_base, entrees_supprimees, plus_ancienne, plus_recente, par_organisation)
+         VALUES ('shiku_purge', 5, now() - interval '9 years', now() - interval '7 years', $1::jsonb)`,
+        [
+          JSON.stringify({
+            [orgId]: {
+              entrees: 3,
+              plus_ancienne: '2017-01-01T00:00:00Z',
+              plus_recente: '2019-01-01T00:00:00Z',
+              par_action: { 'decision.valider': 2, 'role.attribuer': 1 },
+            },
+            [autre]: {
+              entrees: 2,
+              plus_ancienne: '2017-01-01T00:00:00Z',
+              plus_recente: '2017-02-01T00:00:00Z',
+              par_action: { 'agenda.creer': 2 },
+            },
+          }),
+        ],
+      );
+      const r = await appel('authority', 'GET', '/journal/purges');
+      expect(r.statut).toBe(200);
+      expect(r.corps.elements[0]).toMatchObject({
+        entrees_supprimees: 3,
+        par_categorie: { 'Décisions et audiences': 2, 'Droits et délégations': 1 },
+      });
+      expect(JSON.stringify(r.corps)).not.toContain('Administration technique');
+      expect((await appel('autreOrg', 'GET', '/journal/purges')).corps.elements).toEqual([]);
     });
     it('exhaustivité : chaque action de mutation inventoriée a produit au moins une entrée attribuée à une personne', async () => {
       const { rows } = await admin.query<{ action: string; n: number; sans_auteur: number }>(
@@ -1455,7 +1613,10 @@ describe('API métier sur PostgreSQL réel', () => {
         ).toBe(true);
       for (const r of rows) expect(r.sans_auteur, r.action).toBe(0);
       // Aucune entrée ne porte une action absente de l'inventaire (action écrite en cachette).
-      const connues = new Set(Object.values(MUTATIONS_JOURNALISEES).flat());
+      const connues = new Set([
+        ...Object.values(MUTATIONS_JOURNALISEES).flat(),
+        ...ACTIONS_HORS_ROUTES,
+      ]);
       for (const r of rows)
         expect(connues.has(r.action), `action hors inventaire : ${r.action}`).toBe(true);
     });

@@ -46,7 +46,7 @@ function lirePeriode(v: Valideur, requis: boolean): Periode {
  * Agendas et rattachement à une Autorité (périmètre, HYPOTHESE(DEC-32), réponses de M. Jordan du
  * 22/10/2026). À la création, l'Autorité de rattachement est obligatoire : l'Administrateur la
  * PROPOSE ; elle est active une fois AUTORISÉE par l'Autorité désignée puis APPLIQUÉE par
- * l'Administrateur. Chaque étape est journalisée (catégorie à venir : « droits et délégations »).
+ * l'Administrateur. Chaque étape est journalisée en « droits et délégations » (HYPOTHESE(DEC-38)).
  *
  * HYPOTHESE : la règle de visibilité d'un agenda (EF03-24, US-05-026) n'est pas définie ; tout agenda
  * actif de l'organisation est visible par les rôles autorisés à les lister.
@@ -109,7 +109,7 @@ export class AgendasController {
         action: 'agenda.creer',
         objetType: 'agenda',
         objetId: id,
-        contexte: { nom },
+        // Q-5 (23/10/2026) : pas le nom de l'agenda, résolu à l'affichage par son identifiant.
       });
       const rattachement = await proposer(c, this.journal, ctx, id, periode);
       return { id, nom, actif: true, rattachement };

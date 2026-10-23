@@ -11,6 +11,9 @@
 // DEC-32 (règle provisoire du 22/10/2026) : au MVP, l'unique Autorité est rattachée à tous les agendas
 // par la donnée initiale, journalisée « initialisation système ». Seuls les agendas qui n'ont JAMAIS eu
 // de rattachement sont concernés : une révocation faite dans l'application n'est pas annulée.
+// HYPOTHESE(DEC-38), point 1 c (23/10/2026) : deux sortes d'entrées, au nom du « système » (aucune
+// personne) : `systeme.initialiser` (administration technique) quand ce lancement a créé quelque chose,
+// et une entrée `rattachement_agenda.initialiser` (droits et délégations) par rattachement initial.
 // HYPOTHESE H7 : le nom d'organisation ci-dessous est fictif, à remplacer par le métier.
 import { createRequire } from "node:module";
 
@@ -90,6 +93,7 @@ try {
   let org = (
     await db.query("SELECT id FROM organisation WHERE nom = $1", [NOM_ORG])
   ).rows[0];
+  const orgCreee = !org;
   if (!org)
     org = (
       await db.query(
@@ -97,23 +101,29 @@ try {
         [NOM_ORG],
       )
     ).rows[0];
+  let comptesRattaches = 0;
   for (const [nom, complet] of COMPTES)
-    await db.query(
+    comptesRattaches += (
+      await db.query(
       `INSERT INTO utilisateur (organisation_id, keycloak_sub, nom_complet)
        VALUES ($1, $2, $3) ON CONFLICT (keycloak_sub) DO NOTHING`,
-      [org.id, subs.get(nom), complet],
-    );
+        [org.id, subs.get(nom), complet],
+      )
+    ).rowCount;
   const admin = (
     await db.query("SELECT id FROM utilisateur WHERE keycloak_sub = $1", [
       subs.get("admin.test"),
     ])
   ).rows[0];
+  let agendasCrees = 0;
   for (const nom of AGENDAS)
-    await db.query(
+    agendasCrees += (
+      await db.query(
       `INSERT INTO agenda (organisation_id, nom, cree_par) VALUES ($1, $2, $3)
        ON CONFLICT (organisation_id, nom) DO NOTHING`,
-      [org.id, nom, admin.id],
-    );
+        [org.id, nom, admin.id],
+      )
+    ).rowCount;
   const autorite = (
     await db.query("SELECT id FROM utilisateur WHERE keycloak_sub = $1", [
       subs.get("authority.test"),
@@ -121,33 +131,44 @@ try {
   ).rows[0];
   const initiaux = await db.query(
     `INSERT INTO rattachement_agenda (organisation_id, agenda_id, autorite_id, statut, source,
-                                      propose_par, applique_par, applique_le)
-     SELECT a.organisation_id, a.id, $2, 'actif', 'initialisation_systeme', $3, $3, now()
+                                      applique_le)
+     SELECT a.organisation_id, a.id, $2, 'actif', 'initialisation_systeme', now()
        FROM agenda a
       WHERE a.organisation_id = $1 AND a.actif
         AND NOT EXISTS (SELECT 1 FROM rattachement_agenda r WHERE r.agenda_id = a.id)
      RETURNING id, agenda_id`,
-    [org.id, autorite.id, admin.id],
+    [org.id, autorite.id],
   );
+  const parSysteme = (action, objetType, objetId, contexte) =>
+    db.query(
+      `INSERT INTO journal (organisation_id, utilisateur_id, auteur, action, objet_type, objet_id,
+                            contexte)
+       VALUES ($1, NULL, 'systeme', $2, $3, $4, $5::jsonb)`,
+      [org.id, action, objetType, objetId, JSON.stringify(contexte)],
+    );
+  if (orgCreee || comptesRattaches || agendasCrees || initiaux.rowCount)
+    await parSysteme("systeme.initialiser", "organisation", org.id, {
+      organisation_creee: orgCreee,
+      comptes_rattaches: comptesRattaches,
+      agendas_crees: agendasCrees,
+      rattachements_initiaux: initiaux.rowCount,
+    });
   for (const r of initiaux.rows)
-    await db.query(
-      `INSERT INTO journal (organisation_id, utilisateur_id, action, objet_type, objet_id, contexte)
-       VALUES ($1, $2, 'rattachement_agenda.initialiser', 'rattachement_agenda', $3, $4::jsonb)`,
-      [
-        org.id,
-        admin.id,
-        r.id,
-        JSON.stringify({
-          source: "initialisation_systeme",
-          agenda_id: r.agenda_id,
-          autorite_id: autorite.id,
-        }),
-      ],
+    await parSysteme(
+      "rattachement_agenda.initialiser",
+      "rattachement_agenda",
+      r.id,
+      {
+        source: "initialisation_systeme",
+        agenda_id: r.agenda_id,
+        autorite_id: autorite.id,
+      },
     );
   await db.query("COMMIT");
   console.log(
     `OK : organisation « ${NOM_ORG} », ${COMPTES.length} comptes rattachés, ${AGENDAS.length} agendas` +
-      ` ; ${initiaux.rowCount} rattachement(s) initial(aux) à l’Autorité (initialisation système).`,
+      ` ; ${initiaux.rowCount} rattachement(s) initial(aux) à l’Autorité (initialisation système)` +
+      ` ; ${orgCreee || comptesRattaches || agendasCrees || initiaux.rowCount ? "journalisé au nom du système" : "rien de nouveau"}.`,
   );
 } catch (e) {
   await db.query("ROLLBACK").catch(() => undefined);

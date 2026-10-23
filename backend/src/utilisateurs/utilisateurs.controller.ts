@@ -23,6 +23,7 @@ import {
 } from '../keycloak/keycloak-admin.service.js';
 import { ROLES, ROLES_ATTRIBUABLES_PAR_ADMINISTRATEUR } from '../habilitation/roles.js';
 import { JournalService } from '../journal/journal.service.js';
+import { RefusSensiblesService } from '../journal/refus-sensibles.service.js';
 import { type Contexte, ContexteCourant } from './contexte.js';
 
 const COURRIEL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -39,6 +40,7 @@ export class UtilisateursController {
     @Inject(PG_POOL) private readonly pool: Pool,
     private readonly journal: JournalService,
     @Inject(KEYCLOAK_ADMIN) private readonly keycloak: KeycloakAdminService,
+    private readonly refus: RefusSensiblesService,
   ) {}
 
   @Get()
@@ -78,11 +80,18 @@ export class UtilisateursController {
       v.erreur('courriel', 'Adresse de courriel invalide.');
     v.fin();
     // Liste blanche (arbitrage du 19/10/2026, point 2), vérifiée AVANT tout appel à Keycloak.
-    if (!(ROLES_ATTRIBUABLES_PAR_ADMINISTRATEUR as readonly string[]).includes(role!))
+    // Le refus est journalisé : attribution d'un rôle hors liste blanche (HYPOTHESE(DEC-38), 1 e).
+    if (!(ROLES_ATTRIBUABLES_PAR_ADMINISTRATEUR as readonly string[]).includes(role!)) {
+      await this.refus.signaler(ctx, {
+        action: 'role.attribuer',
+        objetType: 'utilisateur',
+        contexte: { role: role!, motif: 'hors_liste_blanche' },
+      });
       throw new ForbiddenException(
         'Rôle non attribuable par l’Administrateur : seuls Réception et Assistant le sont. ' +
           'Autorité et Administrateur passent par l’autorisation de l’Autorité.',
       );
+    }
     const nomComplet = `${prenom!} ${nom!}`;
     let sub: string;
     try {
@@ -149,14 +158,26 @@ export class UtilisateursController {
           throw new ConflictException('Ce compte Keycloak est déjà rattaché.');
         throw e;
       }
+      // Q-5 (23/10/2026) : ni nom ni courriel dans le journal, seulement des identifiants et codes.
       await this.journal.enregistrer(c, {
         organisationId: ctx.organisationId,
         utilisateurId: ctx.utilisateurId, // l'Administrateur, jamais le compte de service
         action: contexte.mode === 'creation' ? 'utilisateur.creer' : 'utilisateur.rattacher',
         objetType: 'utilisateur',
         objetId: id,
-        contexte: { nom_complet: nomComplet, ...contexte, via: 'compte de service' },
+        contexte: { mode: contexte.mode, via: 'compte de service' },
       });
+      // HYPOTHESE(DEC-38), point 1 a : le rôle attribué est une entrée distincte, dans la même
+      // transaction, en « droits et délégations » (signal de la liste d'exceptions de l'Autorité).
+      if (contexte.role)
+        await this.journal.enregistrer(c, {
+          organisationId: ctx.organisationId,
+          utilisateurId: ctx.utilisateurId,
+          action: 'role.attribuer',
+          objetType: 'utilisateur',
+          objetId: id,
+          contexte: { role: contexte.role, via: 'compte de service' },
+        });
       return { id, nom_complet: nomComplet, actif: true };
     });
   }

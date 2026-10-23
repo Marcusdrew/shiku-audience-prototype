@@ -130,7 +130,11 @@ export class AudiencesController {
       );
       if (!ag.rowCount)
         throw new ErreurValidation([{ champ: 'agenda_id', message: 'Référence inconnue.' }]);
-      await this.perimetre.exiger(c, ctx, agenda, 'decision');
+      await this.perimetre.exiger(c, ctx, agenda, 'decision', {
+        action: 'audience.planifier',
+        objetType: 'demande',
+        objetId: demandeId,
+      });
       if (responsableId) {
         const r = await c.query(
           `SELECT 1 FROM utilisateur WHERE id=$1 AND organisation_id=$2 AND actif`,

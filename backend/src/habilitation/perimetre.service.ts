@@ -1,5 +1,6 @@
 import { ConflictException, ForbiddenException, Injectable } from '@nestjs/common';
 import type { Pool, PoolClient } from 'pg';
+import { RefusSensiblesService, type Tentative } from '../journal/refus-sensibles.service.js';
 import type { Contexte } from '../utilisateurs/contexte.js';
 
 /**
@@ -18,6 +19,8 @@ export const SQL_RATTACHEMENT_ACTIF = `statut = 'actif' AND debut <= current_dat
 
 @Injectable()
 export class PerimetreService {
+  constructor(private readonly refus: RefusSensiblesService) {}
+
   async etat(
     q: Pick<Pool | PoolClient, 'query'>,
     ctx: Contexte,
@@ -36,12 +39,15 @@ export class PerimetreService {
    * Décision ou planification : réservées à une Autorité rattachée à l'agenda.
    * Suivi (démarrer, terminer, clôturer) : l'Autorité doit être rattachée ; l'Assistant agit sur tout
    * agenda rattaché.
+   * Une tentative de DÉCISION hors périmètre (403) est journalisée comme refus sensible
+   * (HYPOTHESE(DEC-38), point 1 e) ; le refus « à rattacher » (409) et le suivi ne le sont pas.
    */
   async exiger(
     q: Pick<Pool | PoolClient, 'query'>,
     ctx: Contexte,
     agendaId: string,
     nature: 'decision' | 'suivi',
+    tentative?: Tentative,
   ): Promise<void> {
     const e = await this.etat(q, ctx, agendaId);
     if (!e.rattache)
@@ -51,9 +57,15 @@ export class PerimetreService {
       );
     const roles = ctx.identite.roles;
     const parAssistant = nature === 'suivi' && roles.includes('assistant');
-    if (!parAssistant && !e.moi)
+    if (!parAssistant && !e.moi) {
+      if (nature === 'decision' && tentative)
+        await this.refus.signaler(ctx, {
+          ...tentative,
+          contexte: { ...(tentative.contexte ?? {}), agenda_id: agendaId, motif: 'hors_perimetre' },
+        });
       throw new ForbiddenException(
         'Agenda hors de votre périmètre : aucun rattachement actif à votre nom.',
       );
+    }
   }
 }

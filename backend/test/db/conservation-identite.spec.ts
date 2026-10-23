@@ -123,6 +123,27 @@ describe('lot 2 : purge encadrée, identité nominative, lecture d’audit', () 
     });
   });
 
+  describe('auteur d’une entrée (HYPOTHESE(DEC-38), 1 c)', () => {
+    it('une entrée a une personne OU le « système », jamais aucun des deux ni les deux', async () => {
+      const ins = (u: string | null, auteur: string) =>
+        code(
+          app,
+          `INSERT INTO journal (organisation_id, utilisateur_id, auteur, action, objet_type)
+           VALUES ($1, $2, $3, 'systeme.initialiser', 'organisation')`,
+          [orgId, u, auteur],
+        );
+      expect(await ins(null, 'utilisateur')).toBe('23514');
+      expect(await ins(userId, 'systeme')).toBe('23514');
+      expect(await ins(null, 'inconnu')).toBe('23514');
+      const r = await admin.query(
+        `INSERT INTO journal (organisation_id, utilisateur_id, auteur, action, objet_type)
+         VALUES ($1, NULL, 'systeme', 'systeme.initialiser', 'organisation') RETURNING resultat, sous_delegation`,
+        [orgId],
+      );
+      expect(r.rows[0]).toEqual({ resultat: 'accepte', sous_delegation: false });
+    });
+  });
+
   describe('purge du journal (US-05-011)', () => {
     it('le rôle applicatif ne peut toujours ni supprimer ni modifier une entrée', async () => {
       expect(await code(app, 'DELETE FROM journal WHERE organisation_id=$1', [orgId])).toBe(
@@ -172,9 +193,19 @@ describe('lot 2 : purge encadrée, identité nominative, lecture d’audit', () 
         `${marque}-lot`,
       ]);
       const t = await admin.query(
-        `SELECT entrees_supprimees, plus_ancienne < plus_recente AS bornes FROM journal_purge ORDER BY id DESC LIMIT 1`,
+        `SELECT entrees_supprimees, plus_ancienne < plus_recente AS bornes,
+                par_organisation -> $1 -> 'par_action' AS par_action,
+                (par_organisation -> $1 ->> 'entrees')::int AS entrees_org
+           FROM journal_purge ORDER BY id DESC LIMIT 1`,
+        [orgId],
       );
-      expect(t.rows[0]).toEqual({ entrees_supprimees: 2, bornes: true });
+      // HYPOTHESE(DEC-38), 1 f : détail par organisation et par action, pour le récapitulatif.
+      expect(t.rows[0]).toEqual({
+        entrees_supprimees: 2,
+        bornes: true,
+        par_action: { [`${marque}-lot`]: 2 },
+        entrees_org: 2,
+      });
     });
     it('une suppression qui ne retire aucune ligne ne laisse aucune fausse trace', async () => {
       const avant = Number(

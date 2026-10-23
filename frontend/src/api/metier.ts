@@ -120,7 +120,24 @@ export interface EntreeJournal {
   action: string;
   objet_type: string;
   objet_id: string | null;
+  /** « Système » pour une entrée de l'initialisation (HYPOTHESE(DEC-38)). */
   utilisateur_nom: string;
+  categorie?: string | null;
+  categorie_libelle?: string;
+  resultat?: 'accepte' | 'refuse';
+  sous_delegation?: boolean;
+  auteur?: 'utilisateur' | 'systeme';
+}
+export interface ListeJournal extends Liste<EntreeJournal> {
+  categories_visibles?: { code: string; libelle: string }[];
+}
+export interface PurgeJournal {
+  id: string;
+  purge_le: string;
+  entrees_supprimees: number;
+  plus_ancienne: string;
+  plus_recente: string;
+  par_categorie: Record<string, number>;
 }
 export interface NouvelleDemande {
   visiteur_id: string;
@@ -247,9 +264,11 @@ export const cloturerAudience = (j: J, id: string) =>
 export const TAILLE_PAGE_JOURNAL = 50;
 export const lireJournal = (
   j: J,
-  f: { objet_type?: string; objet_id?: string; decalage?: number },
+  f: { objet_type?: string; objet_id?: string; categorie?: string; decalage?: number },
   s?: AbortSignal,
-) => get<Liste<EntreeJournal>>(`/journal${qs({ ...f, limite: TAILLE_PAGE_JOURNAL })}`, j, s);
+) => get<ListeJournal>(`/journal${qs({ ...f, limite: TAILLE_PAGE_JOURNAL })}`, j, s);
+export const lirePurgesJournal = (j: J, s?: AbortSignal) =>
+  get<Liste<PurgeJournal>>('/journal/purges', j, s);
 export const listerUtilisateurs = (j: J, s?: AbortSignal) =>
   get<Liste<{ id: string; nom_complet: string; actif: boolean }>>('/utilisateurs', j, s);
 export const creerUtilisateur = (
