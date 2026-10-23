@@ -11,7 +11,8 @@ export const LIBELLES_STATUT: Record<StatutDemande, string> = {
   planifiee: 'Audience planifiée',
   realisee: 'Audience réalisée',
   cloturee: 'Clôturée',
-  // Libellé donné en exemple par l'arbitrage du 19/10 (à confirmer par M. Jordan, Q-14).
+  // HYPOTHESE(DEC-34) : règle provisoire du 22/10/2026 (Q-14), sans motif ni auteur de la
+  // décision. Une demande annulée affichera « Annulée » (annulation non développée).
   non_retenue: 'Non retenue — ne pas planifier',
 };
 export const TON_STATUT: Record<StatutDemande, Ton> = {

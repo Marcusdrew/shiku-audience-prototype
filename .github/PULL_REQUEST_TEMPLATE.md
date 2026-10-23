@@ -14,11 +14,25 @@
 - [ ] 
 - [ ] 
 
+## Contrôles exécutés et lieu d'exécution
+
+<!-- Un contrôle réussi dans l'environnement Linux d'un outil ne vaut pas validation. Indiquez pour
+chaque contrôle s'il a été exécuté, où, et son résultat. Un contrôle non lancé est écrit « non exécuté ». -->
+
+| Contrôle | Poste Windows (Node 24, PostgreSQL 18, Docker, Keycloak) | Autre environnement (lequel) |
+| --- | --- | --- |
+| `pnpm lint`, `typecheck`, `format:check`, `build` | | |
+| `pnpm test` | | |
+| `pnpm test:db` | | |
+| `pnpm test:scripts` | | |
+| `verifier-parcours.mjs` | | |
+| Parcours dans le navigateur | | |
+
 ## Les dix conditions de terminé
 
 - [ ] 1. Les critères d'acceptation sont vérifiés
 - [ ] 2. Droit évalué côté serveur (si action sensible)
-- [ ] 3. Entrée de journal attribuée et inaltérable (si action sensible)
+- [ ] 3. Entrée de journal attribuée, protégée contre la modification et la suppression (si action sensible)
 - [ ] 4. Clé d'organisation et règle de conservation (si nouvelle donnée)
 - [ ] 5. Aucun appel direct entre modules métier
 - [ ] 6. Tests de la story passent
@@ -40,6 +54,6 @@
 ## Contribution par IA
 
 - [ ] Je n'ai pas utilisé d'IA pour cette pull request
-- [ ] J'ai utilisé une IA et j'ai relu moi-même chaque ligne. Outil et part concernée : 
+- [ ] J'ai utilisé une IA et j'ai relu moi-même chaque ligne, une par une. Outil et part concernée : 
 
 ## Ce qui reste à faire ou à vérifier
