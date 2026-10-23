@@ -2,8 +2,8 @@ import { useCallback, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router';
 import {
+  contactAffiche,
   creerDemande,
-  creerVisiteur,
   listerAgendas,
   listerDemandes,
   rechercherVisiteurs,
@@ -17,6 +17,7 @@ import { Badge, Card } from '../components/Card';
 import { Champ } from '../components/Champ';
 import { ErreurAction } from '../components/ErreurAction';
 import { ErrorState } from '../components/ErrorState';
+import { FormulaireVisiteur } from '../components/FormulaireVisiteur';
 import { Pagination } from '../components/Pagination';
 import { Spinner } from '../components/Spinner';
 import { useAction } from '../components/useAction';
@@ -152,7 +153,7 @@ export function DemandesPage() {
 }
 
 function NouvelleDemande({ onFermer }: { onFermer: () => void }) {
-  const { jeton } = useAuth();
+  const { jeton, roles } = useAuth();
   const { peut } = useDroits();
   const navigate = useNavigate();
   const { enCours, erreur, executer } = useAction();
@@ -160,7 +161,6 @@ function NouvelleDemande({ onFermer }: { onFermer: () => void }) {
   const [visiteurs, setVisiteurs] = useState<Visiteur[] | null>(null);
   const [termeCherche, setTermeCherche] = useState<string | null>(null);
   const [visiteur, setVisiteur] = useState<Visiteur | null>(null);
-  const [nouveauNom, setNouveauNom] = useState('');
   const agendas = useRequete(useCallback((s: AbortSignal) => listerAgendas(jeton, s), [jeton]));
   const [agendaId, setAgendaId] = useState('');
   const [objet, setObjet] = useState('');
@@ -172,17 +172,12 @@ function NouvelleDemande({ onFermer }: { onFermer: () => void }) {
     if (r) {
       setVisiteurs(r.elements);
       setTermeCherche(q.trim());
-      if (!nouveauNom) setNouveauNom(q.trim());
     }
   }
-  async function creerNouveauVisiteur() {
-    const v = await executer(() => creerVisiteur(jeton, { nom_complet: nouveauNom.trim() }));
-    if (v) {
-      setVisiteur(v);
-      setNouveauNom('');
-      setVisiteurs(null);
-      setTermeCherche(null);
-    }
+  function choisirVisiteur(v: Visiteur) {
+    setVisiteur(v);
+    setVisiteurs(null);
+    setTermeCherche(null);
   }
   async function soumettre(e: FormEvent) {
     e.preventDefault();
@@ -237,6 +232,7 @@ function NouvelleDemande({ onFermer }: { onFermer: () => void }) {
                   Choisir
                 </button>{' '}
                 {v.nom_complet}
+                {contactAffiche(v) ? ` — ${contactAffiche(v)}` : ''}
               </p>
             ))}
             {peut('visiteur.creer') ? (
@@ -247,22 +243,17 @@ function NouvelleDemande({ onFermer }: { onFermer: () => void }) {
                 </p>
               ) : (
                 <>
-                  <Champ id="v-nouveau" libelle="Visiteur absent : créer une fiche (nom complet)">
-                    <input
-                      id="v-nouveau"
-                      maxLength={200}
-                      value={nouveauNom}
-                      onChange={(e) => setNouveauNom(e.target.value)}
-                    />
-                  </Champ>
-                  <button
-                    type="button"
-                    className="bouton bouton--secondaire"
-                    disabled={enCours || !nouveauNom.trim()}
-                    onClick={() => void creerNouveauVisiteur()}
-                  >
-                    Créer le visiteur
-                  </button>
+                  <p className="note">Visiteur absent : créer une fiche.</p>
+                  <FormulaireVisiteur
+                    key={termeCherche}
+                    imbrique
+                    jeton={jeton}
+                    peutQualifier={roles.includes('assistant') || roles.includes('authority')}
+                    prefixe="v-nouveau"
+                    nomInitial={termeCherche}
+                    onCree={choisirVisiteur}
+                    onChoisir={choisirVisiteur}
+                  />
                 </>
               )
             ) : (

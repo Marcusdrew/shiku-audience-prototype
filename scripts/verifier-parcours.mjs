@@ -72,16 +72,22 @@ if (agendas.statut !== 200 || !agendas.corps.elements?.length) {
 }
 const agendaId = agendas.corps.elements[0].id;
 
-const nom = `PARCOURS ${new Date().toISOString()}`;
+const horodatage = new Date().toISOString();
+const nom = `PARCOURS ${horodatage}`;
+// Contacts propres à chaque lancement : le serveur refuse un contact déjà connu (doublon, DEC-36).
+const suffixe = horodatage.replace(/\D/g, "");
+const contactAssistant = `parcours.${suffixe}@exemple.invalid`;
 const v = await appel("assistant", "POST", "/visiteurs", {
-  nom_complet: nom,
-  contact: "parcours@exemple.invalid",
+  prenom: "PARCOURS",
+  nom: horodatage,
+  contact: contactAssistant,
 });
 attendre(v.statut === 201, "l’assistant crée un visiteur fictif", v);
 // DEC-19 tranchée le 19/10 : la Réception crée une fiche minimale (identité, contact), sans qualification.
 const vr = await appel("reception", "POST", "/visiteurs", {
-  nom_complet: `${nom} (réception)`,
-  contact: "reception@exemple.invalid",
+  prenom: "PARCOURS",
+  nom: `${horodatage} (réception)`,
+  contact: `reception.${suffixe}@exemple.invalid`,
 });
 attendre(
   vr.statut === 201,
@@ -89,13 +95,53 @@ attendre(
   vr,
 );
 const vq = await appel("reception", "POST", "/visiteurs", {
-  nom_complet: `${nom} (réception qualifiée)`,
+  prenom: "PARCOURS",
+  nom: `${horodatage} (réception qualifiée)`,
+  contact: `qualifiee.${suffixe}@exemple.invalid`,
   qualite: "Titre fictif",
 });
 attendre(
   vq.statut === 400,
   "la qualification du visiteur est refusée à la réception",
   vq,
+);
+// DEC-36 (22/10) : la Réception ne reçoit que le nom et un contact masqué.
+const vrech = await appel(
+  "reception",
+  "GET",
+  `/visiteurs?q=${encodeURIComponent(horodatage)}`,
+);
+const vu = vrech.corps?.elements?.find((x) => x.id === v.corps?.id);
+attendre(
+  vrech.statut === 200 &&
+    vu?.contact_masque === "p***@e***.invalid" &&
+    !("contact" in (vu ?? {})) &&
+    !JSON.stringify(vrech.corps).includes(contactAssistant),
+  "la réception voit le visiteur avec un contact masqué, jamais le contact complet",
+  vrech,
+);
+const vdoublon = await appel("reception", "POST", "/visiteurs", {
+  prenom: "Autre",
+  nom: `PARCOURS ${suffixe}`,
+  contact: contactAssistant.toUpperCase(),
+});
+attendre(
+  vdoublon.statut === 409 &&
+    vdoublon.corps?.code === "doublon_contact" &&
+    !JSON.stringify(vdoublon.corps).includes(contactAssistant),
+  "même contact : doublon signalé (409), fiche existante masquée",
+  vdoublon,
+);
+const vmod = await appel("assistant", "PATCH", `/visiteurs/${v.corps?.id}`, {
+  qualite: "Délégué fictif",
+});
+const vmodr = await appel("reception", "PATCH", `/visiteurs/${v.corps?.id}`, {
+  qualite: "Tentative",
+});
+attendre(
+  vmod.statut === 200 && vmodr.statut === 403,
+  `l’assistant modifie la fiche ; la réception ne la modifie pas (réception : HTTP ${vmodr.statut})`,
+  vmod,
 );
 
 const d = await appel("reception", "POST", "/demandes", {

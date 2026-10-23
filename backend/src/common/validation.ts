@@ -120,6 +120,16 @@ export class Valideur {
     return v as T;
   }
 
+  booleen(champ: string): boolean {
+    const v = this.brut(champ);
+    if (v === undefined || v === null) return false;
+    if (typeof v !== 'boolean') {
+      this.erreurs.push({ champ, message: 'Booléen attendu (true ou false).' });
+      return false;
+    }
+    return v;
+  }
+
   erreur(champ: string, message: string): void {
     this.erreurs.push({ champ, message });
   }

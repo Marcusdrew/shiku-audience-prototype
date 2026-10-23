@@ -84,11 +84,11 @@ export const NAVIGATION: readonly EntreeNavigation[] = [
     implemente: true,
     libelle: 'Répertoire des visiteurs',
     resume:
-      'Recherche et création de fiches minimales de visiteurs. Notes, attestations et dossier relationnel : non exposés par l’API.',
+      'Recherche, création et modification des fiches minimales de visiteurs (contact masqué pour la Réception, doublons signalés). Notes, attestations et dossier relationnel : non exposés par l’API.',
     roles: ['authority', 'assistant', 'reception'],
     exigences: ['EF03-12', 'EF03-18', 'EF03-19', 'EF03-20'],
     stories: ['US-05-028 à US-05-036'],
-    api: ['GET /visiteurs?q=…', 'POST /visiteurs'],
+    api: ['GET /visiteurs?q=…', 'POST /visiteurs', 'PATCH /visiteurs/:id'],
   },
   {
     chemin: '/administration',

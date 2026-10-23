@@ -7,6 +7,7 @@
 export const MUTATIONS_JOURNALISEES: Readonly<Record<string, readonly string[]>> = {
   'agendas creer': ['agenda.creer'],
   'visiteurs creer': ['visiteur.creer'],
+  'visiteurs modifier': ['visiteur.modifier'],
   'demandes creer': ['demande.creer'],
   'demandes modifier': ['demande.modifier'],
   'demandes qualifier': ['demande.qualifier'],

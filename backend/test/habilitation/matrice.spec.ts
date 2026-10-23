@@ -83,6 +83,7 @@ describe('matrice officielle (Gate 02A)', () => {
       'decision.consulter',
       'demande.modifier',
       'visiteur.creer',
+      'visiteur.modifier',
     ]);
   });
 
@@ -143,6 +144,14 @@ describe('matrice officielle (Gate 02A)', () => {
     for (const r of ['reception', 'assistant', 'authority'] as const)
       expect(s.estAutorise([r], 'visiteur.creer'), r).toBe(true);
     expect(s.estAutorise(['administrator'], 'visiteur.creer')).toBe(false);
+  });
+
+  it('modification de visiteur (DEC-36) : Assistant et Autorité ; ni la Réception ni l’Administrateur', () => {
+    const s = new HabilitationService(MATRICE_OFFICIELLE);
+    expect(s.estAutorise(['assistant'], 'visiteur.modifier')).toBe(true);
+    expect(s.estAutorise(['authority'], 'visiteur.modifier')).toBe(true);
+    expect(s.estAutorise(['reception'], 'visiteur.modifier')).toBe(false);
+    expect(s.estAutorise(['administrator'], 'visiteur.modifier')).toBe(false);
   });
 
   it('la clôture (arbitrage du 19/10) : Autorité et Assistant, pas la Réception ni l’Administrateur', () => {

@@ -201,6 +201,14 @@ a {
   background: var(--info-fond);
   border-color: var(--marque);
 }
+.alerte--attention {
+  background: var(--attention-fond);
+  color: var(--attention);
+  border-color: var(--attention);
+}
+.alerte--attention ul {
+  margin: 0.5rem 0;
+}
 
 .bouton {
   display: inline-block;

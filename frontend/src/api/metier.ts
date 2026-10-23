@@ -12,12 +12,20 @@ export interface Agenda {
   id: string;
   nom: string;
 }
+/**
+ * Visiteur tel que le serveur le renvoie (DEC-36) : fiche complète pour l'Assistant et l'Autorité
+ * (droit `visiteur.modifier`), résultat minimal sinon (nom et contact masqué, jamais le contact complet).
+ */
 export interface Visiteur {
   id: string;
   nom_complet: string;
-  contact: string | null;
-  qualite: string | null;
+  prenom?: string | null;
+  nom?: string | null;
+  contact?: string | null;
+  contact_masque?: string | null;
+  qualite?: string | null;
 }
+export const contactAffiche = (v: Visiteur) => v.contact ?? v.contact_masque ?? null;
 export type StatutDemande =
   | 'recue'
   | 'qualifiee'
@@ -115,10 +123,35 @@ export const listerAgendas = (j: J, s?: AbortSignal) => get<Liste<Agenda>>('/age
 export const creerAgenda = (j: J, nom: string) => envoyer<Agenda>('POST', '/agendas', j, { nom });
 export const rechercherVisiteurs = (j: J, q: string, s?: AbortSignal) =>
   get<Liste<Visiteur>>(`/visiteurs${qs({ q, limite: 20 })}`, j, s);
-export const creerVisiteur = (
+export interface NouveauVisiteur {
+  prenom: string;
+  nom: string;
+  contact: string;
+  qualite?: string;
+  confirmer_homonyme?: boolean;
+  motif_doublon?: 'homonyme_distinct';
+}
+export const creerVisiteur = (j: J, corps: NouveauVisiteur) =>
+  envoyer<Visiteur>('POST', '/visiteurs', j, corps);
+export const modifierVisiteur = (
   j: J,
-  corps: { nom_complet: string; contact?: string; qualite?: string },
-) => envoyer<Visiteur>('POST', '/visiteurs', j, corps);
+  id: string,
+  corps: Partial<Record<'prenom' | 'nom' | 'contact' | 'qualite', string>>,
+) => envoyer<Visiteur>('PATCH', `/visiteurs/${id}`, j, corps);
+
+/** Doublon signalé par le serveur (409) : fiches proches, toujours au format minimal. */
+export interface DoublonVisiteur {
+  code: 'doublon_contact' | 'doublon_nom';
+  message: string;
+  doublons: Visiteur[];
+}
+export function lireDoublon(corps: unknown): DoublonVisiteur | null {
+  if (!corps || typeof corps !== 'object') return null;
+  const c = corps as Partial<DoublonVisiteur>;
+  return (c.code === 'doublon_contact' || c.code === 'doublon_nom') && Array.isArray(c.doublons)
+    ? (c as DoublonVisiteur)
+    : null;
+}
 export const TAILLE_PAGE = 20;
 export const listerDemandes = (
   j: J,

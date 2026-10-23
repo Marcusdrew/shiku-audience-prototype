@@ -4,11 +4,19 @@ export class ApiError extends Error {
   readonly statut: number | null;
   /** Détail par champ renvoyé par le serveur pour une validation refusée (400). */
   readonly details: string[];
-  constructor(message: string, statut: number | null, details: string[] = []) {
+  /** Corps JSON de la réponse refusée, pour les cas structurés (ex. doublon de visiteur, 409). */
+  readonly corps: unknown;
+  constructor(
+    message: string,
+    statut: number | null,
+    details: string[] = [],
+    corps: unknown = null,
+  ) {
     super(message);
     this.name = 'ApiError';
     this.statut = statut;
     this.details = details;
+    this.corps = corps;
   }
 }
 
@@ -62,7 +70,12 @@ export async function appeler<T>(chemin: string, options: OptionsRequete = {}): 
           )
         : [];
     const lisible = [400, 403, 409].includes(reponse.status) && message;
-    throw new ApiError(lisible ? message : messageHttp(reponse.status), reponse.status, erreurs);
+    throw new ApiError(
+      lisible ? message : messageHttp(reponse.status),
+      reponse.status,
+      erreurs,
+      corps,
+    );
   }
   if (reponse.status === 204) return undefined as T;
   try {

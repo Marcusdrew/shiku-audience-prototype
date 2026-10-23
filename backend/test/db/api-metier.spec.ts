@@ -444,61 +444,233 @@ describe('API métier sur PostgreSQL réel', () => {
     });
   });
 
-  describe('visiteurs (US-05-029, DEC-19 tranchée le 19/10)', () => {
-    it('la Réception crée une fiche minimale (identité, contact) ; la qualification lui est refusée par le serveur', async () => {
+  describe('visiteurs (US-05-029, DEC-19 ; doublons et vue minimale, DEC-36)', () => {
+    const journalDe = (id: string, action: string) =>
+      admin.query<{ utilisateur_id: string; contexte: Record<string, unknown> }>(
+        `SELECT utilisateur_id, contexte FROM journal WHERE objet_id=$1 AND action=$2`,
+        [id, action],
+      );
+
+    it('la Réception crée une fiche minimale (prénom, nom, contact) ; la qualification lui est refusée', async () => {
       const refus = await appel('reception', 'POST', '/visiteurs', {
-        nom_complet: 'Fiche Réception fictive',
+        prenom: 'Fiche',
+        nom: `Réception ${MARQUE}`,
+        contact: 'reception@exemple.invalid',
         qualite: 'Titre fictif',
       });
       expect(refus.statut).toBe(400);
       expect(refus.corps.erreurs.map((e: { champ: string }) => e.champ)).toEqual(['qualite']);
       const ok = await appel('reception', 'POST', '/visiteurs', {
-        nom_complet: 'Fiche Réception fictive',
+        prenom: 'Fiche',
+        nom: `Réception ${MARQUE}`,
         contact: 'reception@exemple.invalid',
       });
       expect(ok.statut).toBe(201);
-      expect(ok.corps.qualite).toBeNull();
-      const j = await admin.query(
-        `SELECT utilisateur_id, contexte FROM journal WHERE objet_id=$1 AND action='visiteur.creer'`,
-        [ok.corps.id],
-      );
+      // Résultat minimal pour la Réception : contact masqué, ni contact complet ni qualification.
+      expect(ok.corps).toEqual({
+        id: expect.any(String),
+        nom_complet: `Fiche Réception ${MARQUE}`,
+        contact_masque: 'r***@e***.invalid',
+      });
+      const j = await journalDe(ok.corps.id, 'visiteur.creer');
       expect(j.rows).toHaveLength(1);
       expect(j.rows[0]!.utilisateur_id).toBe(acteurs.reception.id);
-      expect(JSON.stringify(j.rows[0]!.contexte)).not.toContain('Réception fictive');
+      expect(JSON.stringify(j.rows[0]!.contexte)).not.toMatch(/Réception|reception@/);
     });
+
     it('l’Autorité crée un visiteur avec qualification ; l’Administrateur ne crée pas de visiteur', async () => {
       const r = await appel('authority', 'POST', '/visiteurs', {
-        nom_complet: 'Fiche Autorité fictive',
+        prenom: 'Fiche',
+        nom: `Autorité ${MARQUE}`,
+        contact: '+243 81 000 00 01',
         qualite: 'Titre fictif',
       });
       expect(r.statut).toBe(201);
+      expect(r.corps.qualite).toBe('Titre fictif');
+      expect(r.corps.contact).toBe('+243 81 000 00 01');
       expect(
-        (await appel('administrator', 'POST', '/visiteurs', { nom_complet: 'Fiche fictive' }))
-          .statut,
+        (
+          await appel('administrator', 'POST', '/visiteurs', {
+            prenom: 'Fiche',
+            nom: 'fictive',
+            contact: 'admin@exemple.invalid',
+          })
+        ).statut,
       ).toBe(403);
     });
-    it('l’assistant crée un visiteur qualifié ; la réception le retrouve par la recherche', async () => {
+
+    it('l’Assistant crée un visiteur qualifié ; la Réception le retrouve, contact masqué', async () => {
       const r = await appel('assistant', 'POST', '/visiteurs', {
-        nom_complet: `Visiteur ${MARQUE}`,
+        prenom: 'Visiteur',
+        nom: MARQUE,
         contact: 'contact@exemple.invalid',
         qualite: 'Délégué fictif',
       });
       expect(r.statut).toBe(201);
       visiteurId = r.corps.id;
       const q = await appel('reception', 'GET', `/visiteurs?q=${encodeURIComponent(MARQUE)}`);
-      expect(q.corps.elements.map((v: { id: string }) => v.id)).toEqual([visiteurId]);
+      const trouve = q.corps.elements.find((v: { id: string }) => v.id === visiteurId);
+      expect(trouve).toEqual({
+        id: visiteurId,
+        nom_complet: `Visiteur ${MARQUE}`,
+        contact_masque: 'c***@e***.invalid',
+      });
+      // Jamais le contact complet ni la qualification dans la réponse faite à la Réception.
+      expect(JSON.stringify(q.corps)).not.toMatch(/contact@exemple|Délégué fictif/);
+      const qa = await appel('assistant', 'GET', `/visiteurs?q=${encodeURIComponent(MARQUE)}`);
+      expect(qa.corps.elements.find((v: { id: string }) => v.id === visiteurId)).toMatchObject({
+        contact: 'contact@exemple.invalid',
+        qualite: 'Délégué fictif',
+        prenom: 'Visiteur',
+        nom: MARQUE,
+      });
     });
-    it('refuse un nom vide et un champ inconnu', async () => {
+
+    it('même contact (normalisé) : 409 avec la fiche existante masquée ; création avec le motif « homonyme distinct », journalisé', async () => {
+      const corps = {
+        prenom: 'Autre',
+        nom: `Personne ${MARQUE}`,
+        contact: ' CONTACT@Exemple.invalid ',
+      };
+      const r = await appel('reception', 'POST', '/visiteurs', corps);
+      expect(r.statut).toBe(409);
+      expect(r.corps.code).toBe('doublon_contact');
+      expect(r.corps.doublons).toContainEqual({
+        id: visiteurId,
+        nom_complet: `Visiteur ${MARQUE}`,
+        contact_masque: 'c***@e***.invalid',
+      });
+      expect(JSON.stringify(r.corps)).not.toContain('contact@exemple');
+      // Une simple confirmation ne suffit pas : le motif est exigé quand le contact est identique.
+      const conf = await appel('reception', 'POST', '/visiteurs', {
+        ...corps,
+        confirmer_homonyme: true,
+      });
+      expect(conf.statut).toBe(409);
+      const ok = await appel('reception', 'POST', '/visiteurs', {
+        ...corps,
+        motif_doublon: 'homonyme_distinct',
+      });
+      expect(ok.statut).toBe(201);
+      const j = await journalDe(ok.corps.id, 'visiteur.creer');
+      expect(j.rows[0]!.contexte).toMatchObject({ doublon: 'contact', motif: 'homonyme_distinct' });
+      expect(j.rows[0]!.contexte.doublons_ids).toContain(visiteurId);
+    });
+
+    it('même nom normalisé (casse, accents, ordre des mots) : avertissement 409, puis création confirmée', async () => {
+      const corps = {
+        prenom: MARQUE.toLowerCase(),
+        nom: 'VISITEUR',
+        contact: '0810000002',
+      };
+      const r = await appel('assistant', 'POST', '/visiteurs', corps);
+      expect(r.statut).toBe(409);
+      expect(r.corps.code).toBe('doublon_nom');
+      expect(r.corps.doublons.map((v: { id: string }) => v.id)).toContain(visiteurId);
+      const ok = await appel('assistant', 'POST', '/visiteurs', {
+        ...corps,
+        confirmer_homonyme: true,
+      });
+      expect(ok.statut).toBe(201);
+      const j = await journalDe(ok.corps.id, 'visiteur.creer');
+      expect(j.rows[0]!.contexte).toMatchObject({ doublon: 'nom', confirmation: true });
+      const accents = await appel('assistant', 'POST', '/visiteurs', {
+        prenom: 'Élodie',
+        nom: `Ñandú ${MARQUE}`,
+        contact: '0810000003',
+      });
+      expect(accents.statut).toBe(201);
+      const variante = await appel('assistant', 'POST', '/visiteurs', {
+        prenom: `NANDU ${MARQUE}`,
+        nom: 'elodie',
+        contact: '0810000004',
+      });
+      expect(variante.statut).toBe(409);
+      expect(variante.corps.code).toBe('doublon_nom');
+    });
+
+    it('refuse un nom vide, un contact absent ou invalide, et un champ inconnu (dont l’ancien nom_complet)', async () => {
       const r = await appel('assistant', 'POST', '/visiteurs', {
-        nom_complet: '  ',
-        role: 'admin',
+        prenom: '  ',
+        nom: 'Fictif',
+        contact: 'rue des Fleurs',
+        nom_complet: 'Ancien format',
       });
       expect(r.statut).toBe(400);
       expect(r.corps.erreurs.map((e: { champ: string }) => e.champ).sort()).toEqual([
+        'contact',
         'nom_complet',
-        'role',
+        'prenom',
       ]);
+      const sansContact = await appel('assistant', 'POST', '/visiteurs', { prenom: 'A', nom: 'B' });
+      expect(sansContact.statut).toBe(400);
     });
+
+    it('modification (DEC-36) : l’Assistant modifie, journalisé par nom de champ ; la Réception et l’Administrateur sont refusés', async () => {
+      const refus = await appel('reception', 'PATCH', `/visiteurs/${visiteurId}`, {
+        qualite: 'Tentative',
+      });
+      expect(refus.statut).toBe(403);
+      expect(
+        (await appel('administrator', 'PATCH', `/visiteurs/${visiteurId}`, { qualite: 'x' }))
+          .statut,
+      ).toBe(403);
+      const r = await appel('assistant', 'PATCH', `/visiteurs/${visiteurId}`, {
+        qualite: 'Délégué fictif modifié',
+        contact: 'nouveau@exemple.invalid',
+      });
+      expect(r.statut).toBe(200);
+      expect(r.corps).toMatchObject({
+        qualite: 'Délégué fictif modifié',
+        contact: 'nouveau@exemple.invalid',
+      });
+      const j = await journalDe(visiteurId, 'visiteur.modifier');
+      expect(j.rows).toHaveLength(1);
+      expect(j.rows[0]!.utilisateur_id).toBe(acteurs.assistant.id);
+      expect([...(j.rows[0]!.contexte.champs as string[])].sort()).toEqual(['contact', 'qualite']);
+      // HYPOTHESE (Q-5) : ni l'ancienne ni la nouvelle valeur dans le journal.
+      expect(JSON.stringify(j.rows[0]!.contexte)).not.toMatch(/exemple|Délégué/);
+      // Sans changement réel : aucune entrée de plus.
+      await appel('assistant', 'PATCH', `/visiteurs/${visiteurId}`, {
+        contact: 'nouveau@exemple.invalid',
+      });
+      expect((await journalDe(visiteurId, 'visiteur.modifier')).rows).toHaveLength(1);
+      const nom = await appel('authority', 'PATCH', `/visiteurs/${visiteurId}`, {
+        prenom: 'Visiteuse',
+      });
+      expect(nom.statut).toBe(200);
+      expect(nom.corps.nom_complet).toBe(`Visiteuse ${MARQUE}`);
+      const absent = await appel(
+        'assistant',
+        'PATCH',
+        '/visiteurs/00000000-0000-4000-8000-000000000000',
+        {
+          qualite: 'x',
+        },
+      );
+      expect(absent.statut).toBe(404);
+      const vide = await appel('assistant', 'PATCH', `/visiteurs/${visiteurId}`, {});
+      expect(vide.statut).toBe(400);
+    });
+
+    it('une fiche antérieure (nom complet seul) exige prénom et nom ensemble', async () => {
+      const ancien = await admin.query<{ id: string }>(
+        `INSERT INTO visiteur (organisation_id, nom_complet, contact, cree_par)
+         VALUES ($1, $2, 'ancien@exemple.invalid', $3) RETURNING id`,
+        [orgId, `Ancien ${MARQUE}`, acteurs.assistant.id],
+      );
+      const id = ancien.rows[0]!.id;
+      expect((await appel('assistant', 'PATCH', `/visiteurs/${id}`, { nom: 'Seul' })).statut).toBe(
+        409,
+      );
+      const ok = await appel('assistant', 'PATCH', `/visiteurs/${id}`, {
+        prenom: 'Ancien',
+        nom: 'Fictif',
+      });
+      expect(ok.statut).toBe(200);
+      expect(ok.corps.nom_complet).toBe('Ancien Fictif');
+    });
+
     it('la recherche traite % et _ comme du texte', async () => {
       const r = await appel('reception', 'GET', '/visiteurs?q=%25');
       expect(r.statut).toBe(200);
@@ -1020,7 +1192,9 @@ describe('API métier sur PostgreSQL réel', () => {
           orgId,
         ]);
         const r = await appel('assistant', 'POST', '/visiteurs', {
-          nom_complet: 'Ne doit pas exister',
+          prenom: 'Ne doit',
+          nom: 'pas exister',
+          contact: 'inexistant@exemple.invalid',
         });
         expect(r.statut).toBe(500);
         expect(

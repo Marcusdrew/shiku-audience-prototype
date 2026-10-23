@@ -1,6 +1,11 @@
 import { useCallback, useState } from 'react';
 import type { FormEvent } from 'react';
-import { creerVisiteur, rechercherVisiteurs, type Visiteur } from '../api/metier';
+import {
+  contactAffiche,
+  modifierVisiteur,
+  rechercherVisiteurs,
+  type Visiteur,
+} from '../api/metier';
 import { useRequete } from '../api/useRequete';
 import { useAuth } from '../auth/AuthContext';
 import { useDroits } from '../auth/DroitsContext';
@@ -8,17 +13,20 @@ import { Card } from '../components/Card';
 import { Champ } from '../components/Champ';
 import { ErreurAction } from '../components/ErreurAction';
 import { ErrorState } from '../components/ErrorState';
+import { FormulaireVisiteur } from '../components/FormulaireVisiteur';
 import { Spinner } from '../components/Spinner';
 import { useAction } from '../components/useAction';
 
 /**
- * Répertoire minimal des visiteurs, branché sur `GET /visiteurs` et `POST /visiteurs`.
- * Le dossier relationnel (notes, attestations, signalements) n'est pas exposé par le backend.
+ * Répertoire minimal des visiteurs, branché sur `GET /visiteurs`, `POST /visiteurs` et
+ * `PATCH /visiteurs/:id`. Le dossier relationnel (notes, attestations, signalements) n'est pas exposé.
  *
- * Arbitrage du 19/10/2026 (DEC-19) : Réception, Assistant et Autorité créent un visiteur, après
- * recherche pour éviter un doublon ; la Réception ne saisit que l'identité minimale et le contact,
- * la qualification reste à l'Assistant (ou à l'Autorité). Le serveur refuse la qualification à la
- * Réception : le masquage du champ ici n'est qu'un confort d'affichage.
+ * Règles (DEC-19 du 19/10, DEC-36 du 22/10, provisoires) :
+ * - la Réception recherche et crée, avec un résultat minimal : nom et contact masqué, sans
+ *   qualification. Le serveur ne lui envoie jamais le contact complet ;
+ * - l'Assistant et l'Autorité voient la fiche complète, la qualifient et la modifient ;
+ * - les doublons sont signalés par le serveur ; l'écran demande de choisir ou de confirmer.
+ * Les droits sont décidés par le serveur ; masquer un champ ici n'est qu'un confort d'affichage.
  */
 export function RelationnelPage() {
   const { jeton, roles } = useAuth();
@@ -26,12 +34,10 @@ export function RelationnelPage() {
   const [terme, setTerme] = useState('');
   const [recherche, setRecherche] = useState('');
   const [rechercheFaite, setRechercheFaite] = useState(false);
-  const [nom, setNom] = useState('');
-  const [contact, setContact] = useState('');
-  const [qualite, setQualite] = useState('');
   const [cree, setCree] = useState<Visiteur | null>(null);
-  const action = useAction();
+  const [enEdition, setEnEdition] = useState<Visiteur | null>(null);
   const peutQualifier = roles.includes('assistant') || roles.includes('authority');
+  const peutModifier = peut('visiteur.modifier');
 
   const charger = useCallback(
     (signal: AbortSignal) => rechercherVisiteurs(jeton, recherche, signal),
@@ -44,27 +50,13 @@ export function RelationnelPage() {
     setCree(null);
     setRecherche(terme.trim());
     setRechercheFaite(true);
-    if (!nom) setNom(terme.trim());
   }
 
-  async function creer(e: FormEvent) {
-    e.preventDefault();
-    const nouveau = await action.executer(() =>
-      creerVisiteur(jeton, {
-        nom_complet: nom.trim(),
-        ...(contact.trim() ? { contact: contact.trim() } : {}),
-        ...(peutQualifier && qualite.trim() ? { qualite: qualite.trim() } : {}),
-      }),
-    );
-    if (nouveau) {
-      setCree(nouveau);
-      setNom('');
-      setContact('');
-      setQualite('');
-      setTerme(nouveau.nom_complet);
-      setRecherche(nouveau.nom_complet);
-      liste.recharger();
-    }
+  function apresCreation(v: Visiteur) {
+    setCree(v);
+    setTerme(v.nom_complet);
+    setRecherche(v.nom_complet);
+    liste.recharger();
   }
 
   const visiteurs = liste.etat === 'succes' ? liste.donnees.elements : [];
@@ -93,6 +85,11 @@ export function RelationnelPage() {
                 Rechercher
               </button>
             </form>
+            {!peutModifier && (
+              <p className="note">
+                Contacts masqués : votre profil voit le nom et un contact partiel seulement.
+              </p>
+            )}
             {liste.etat === 'chargement' && <Spinner libelle="Chargement des visiteurs…" />}
             {liste.etat === 'erreur' && (
               <ErrorState
@@ -111,15 +108,27 @@ export function RelationnelPage() {
                       <tr>
                         <th>Nom complet</th>
                         <th>Contact</th>
-                        <th>Qualité</th>
+                        {peutModifier && <th>Qualité</th>}
+                        {peutModifier && <th>Action</th>}
                       </tr>
                     </thead>
                     <tbody>
                       {visiteurs.map((v) => (
                         <tr key={v.id}>
                           <td>{v.nom_complet}</td>
-                          <td>{v.contact || '—'}</td>
-                          <td>{v.qualite || '—'}</td>
+                          <td>{contactAffiche(v) ?? '—'}</td>
+                          {peutModifier && <td>{v.qualite || '—'}</td>}
+                          {peutModifier && (
+                            <td>
+                              <button
+                                type="button"
+                                className="bouton bouton--secondaire"
+                                onClick={() => setEnEdition(v)}
+                              >
+                                Modifier
+                              </button>
+                            </td>
+                          )}
                         </tr>
                       ))}
                     </tbody>
@@ -127,6 +136,17 @@ export function RelationnelPage() {
                 </div>
               ))}
           </Card>
+        )}
+        {peutModifier && enEdition && (
+          <ModificationVisiteur
+            key={enEdition.id}
+            jeton={jeton}
+            visiteur={enEdition}
+            onFin={(modifie) => {
+              setEnEdition(null);
+              if (modifie) liste.recharger();
+            }}
+          />
         )}
         {peut('visiteur.creer') && (
           <Card titre="Créer une fiche visiteur">
@@ -141,49 +161,22 @@ export function RelationnelPage() {
                 pour éviter les doublons.
               </p>
             ) : (
-              <form className="formulaire" onSubmit={(e) => void creer(e)}>
+              <>
                 {rechercheFaite && visiteurs.length > 0 && (
                   <p className="note">
                     {visiteurs.length} fiche(s) proche(s) trouvée(s) ci-dessus : vérifiez qu’il ne
                     s’agit pas de la même personne avant de créer une nouvelle fiche.
                   </p>
                 )}
-                <Champ id="vis-nom" libelle="Nom complet">
-                  <input
-                    id="vis-nom"
-                    required
-                    maxLength={200}
-                    value={nom}
-                    onChange={(e) => setNom(e.target.value)}
-                  />
-                </Champ>
-                <Champ id="vis-contact" libelle="Contact (facultatif)">
-                  <input
-                    id="vis-contact"
-                    maxLength={300}
-                    value={contact}
-                    onChange={(e) => setContact(e.target.value)}
-                  />
-                </Champ>
-                {peutQualifier ? (
-                  <Champ id="vis-qualite" libelle="Qualité / fonction (facultatif)">
-                    <input
-                      id="vis-qualite"
-                      maxLength={200}
-                      value={qualite}
-                      onChange={(e) => setQualite(e.target.value)}
-                    />
-                  </Champ>
-                ) : (
-                  <p className="note">
-                    La qualification du visiteur (qualité, fonction) est saisie par l’Assistant.
-                  </p>
-                )}
-                <ErreurAction erreur={action.erreur} />
-                <button className="bouton" type="submit" disabled={action.enCours}>
-                  Créer le visiteur
-                </button>
-              </form>
+                <FormulaireVisiteur
+                  key={recherche}
+                  jeton={jeton}
+                  peutQualifier={peutQualifier}
+                  prefixe="vis"
+                  nomInitial={recherche}
+                  onCree={apresCreation}
+                />
+              </>
             )}
           </Card>
         )}
@@ -194,5 +187,88 @@ export function RelationnelPage() {
         )}
       </div>
     </>
+  );
+}
+
+/** Modification par l'Assistant ou l'Autorité (DEC-36) : seuls les champs changés sont envoyés. */
+function ModificationVisiteur({
+  jeton,
+  visiteur,
+  onFin,
+}: {
+  jeton: string | null;
+  visiteur: Visiteur;
+  onFin: (modifie: boolean) => void;
+}) {
+  const [prenom, setPrenom] = useState(visiteur.prenom ?? '');
+  const [nom, setNom] = useState(visiteur.nom ?? '');
+  const [contact, setContact] = useState(visiteur.contact ?? '');
+  const [qualite, setQualite] = useState(visiteur.qualite ?? '');
+  const action = useAction();
+
+  async function enregistrer(e: FormEvent) {
+    e.preventDefault();
+    const corps: Partial<Record<'prenom' | 'nom' | 'contact' | 'qualite', string>> = {};
+    if (prenom.trim() !== (visiteur.prenom ?? '')) corps.prenom = prenom.trim();
+    if (nom.trim() !== (visiteur.nom ?? '')) corps.nom = nom.trim();
+    if (contact.trim() !== (visiteur.contact ?? '')) corps.contact = contact.trim();
+    if (qualite.trim() !== (visiteur.qualite ?? '')) corps.qualite = qualite.trim();
+    if (!Object.keys(corps).length) return onFin(false);
+    const r = await action.executer(() => modifierVisiteur(jeton, visiteur.id, corps));
+    if (r) onFin(true);
+  }
+
+  return (
+    <Card titre={`Modifier la fiche : ${visiteur.nom_complet}`}>
+      {!visiteur.prenom && (
+        <p className="note">
+          Fiche antérieure : seul le nom complet est connu. Pour changer le nom, saisissez le prénom
+          et le nom.
+        </p>
+      )}
+      <form className="formulaire" onSubmit={(e) => void enregistrer(e)}>
+        <Champ id="mod-prenom" libelle="Prénom">
+          <input
+            id="mod-prenom"
+            maxLength={100}
+            value={prenom}
+            onChange={(e) => setPrenom(e.target.value)}
+          />
+        </Champ>
+        <Champ id="mod-nom" libelle="Nom">
+          <input
+            id="mod-nom"
+            maxLength={100}
+            value={nom}
+            onChange={(e) => setNom(e.target.value)}
+          />
+        </Champ>
+        <Champ id="mod-contact" libelle="Contact (téléphone ou courriel)">
+          <input
+            id="mod-contact"
+            maxLength={300}
+            value={contact}
+            onChange={(e) => setContact(e.target.value)}
+          />
+        </Champ>
+        <Champ id="mod-qualite" libelle="Qualité / fonction">
+          <input
+            id="mod-qualite"
+            maxLength={200}
+            value={qualite}
+            onChange={(e) => setQualite(e.target.value)}
+          />
+        </Champ>
+        <ErreurAction erreur={action.erreur} />
+        <div className="actions">
+          <button className="bouton" type="submit" disabled={action.enCours}>
+            Enregistrer la modification
+          </button>
+          <button className="bouton bouton--secondaire" type="button" onClick={() => onFin(false)}>
+            Annuler
+          </button>
+        </div>
+      </form>
+    </Card>
   );
 }

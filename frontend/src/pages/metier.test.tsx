@@ -231,8 +231,52 @@ describe('formulaire de création : Réception, visiteurs (DEC-19) et comptes', 
     await u.type(within(groupe).getByLabelText('Rechercher un visiteur par nom'), 'Nouveau Fictif');
     await u.click(within(groupe).getByRole('button', { name: 'Rechercher' }));
     expect(await within(groupe).findByText('Aucun visiteur trouvé.')).toBeInTheDocument();
-    expect(within(groupe).getByLabelText(/créer une fiche/)).toHaveValue('Nouveau Fictif');
-    expect(within(groupe).getByText('Créer le visiteur')).toBeInTheDocument();
+    expect(within(groupe).getByText(/Visiteur absent : créer une fiche/)).toBeInTheDocument();
+    // Identité minimale (DEC-36) : prénom, nom, contact ; le terme recherché pré-remplit le nom.
+    expect(within(groupe).getByLabelText('Nom')).toHaveValue('Nouveau Fictif');
+    expect(within(groupe).getByLabelText('Prénom')).toHaveValue('');
+    const creer = within(groupe).getByRole('button', { name: 'Créer le visiteur' });
+    expect(creer).toBeDisabled();
+    await u.type(within(groupe).getByLabelText('Prénom'), 'Ama');
+    await u.type(within(groupe).getByLabelText('Contact (téléphone ou courriel)'), '0810000000');
+    expect(creer).toBeEnabled();
+  });
+
+  it('création depuis la demande : un doublon signalé par le serveur peut être choisi à la place', async () => {
+    const existant = { id: 'v9', nom_complet: 'Ama Fictif', contact_masque: '***00' };
+    simulerApi([
+      [
+        'GET /droits',
+        droits(['demande.creer', 'demande.consulter', 'visiteur.rechercher', 'visiteur.creer']),
+      ],
+      ['GET /agendas', { elements: [{ id: 'a1', nom: 'Agenda fictif' }] }],
+      ['GET /visiteurs', { elements: [] }],
+      ['GET /demandes', { elements: [], total: 0 }],
+      ['GET /sante', { statut: 'ok', base: 'ok' }],
+      [
+        'POST /visiteurs',
+        {
+          message: 'Un visiteur a déjà ce contact.',
+          code: 'doublon_contact',
+          doublons: [existant],
+        },
+        409,
+      ],
+    ]);
+    const u = userEvent.setup();
+    monter('/demandes');
+    await u.click(await screen.findByText('Créer une demande'));
+    const groupe = screen.getByRole('group', { name: 'Visiteur' });
+    await u.type(within(groupe).getByLabelText('Rechercher un visiteur par nom'), 'Fictif');
+    await u.click(within(groupe).getByRole('button', { name: 'Rechercher' }));
+    await u.type(await within(groupe).findByLabelText('Prénom'), 'Ama');
+    await u.type(within(groupe).getByLabelText('Contact (téléphone ou courriel)'), '0810000000');
+    await u.click(within(groupe).getByRole('button', { name: 'Créer le visiteur' }));
+    expect(await within(groupe).findByText('Un visiteur a déjà ce contact.')).toBeInTheDocument();
+    expect(within(groupe).getByText(/Ama Fictif — \*\*\*00/)).toBeInTheDocument();
+    await u.click(within(groupe).getByRole('button', { name: 'Choisir cette fiche' }));
+    expect(await within(groupe).findByText('Ama Fictif')).toBeInTheDocument();
+    expect(within(groupe).getByRole('button', { name: 'Changer' })).toBeInTheDocument();
   });
 
   it('Réception : le filtre de statut propose le statut neutre, jamais « Rejetée »', async () => {

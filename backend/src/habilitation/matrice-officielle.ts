@@ -227,6 +227,19 @@ export const MATRICE_OFFICIELLE: Matrice = {
         'pour les champs) ; la qualification reste à l’Assistant. Interface publique par code QR : hors périmètre (DEC-31).',
       implementee: true,
     },
+    'visiteur.modifier': {
+      roles: ['authority', 'assistant'],
+      delegues: [],
+      source:
+        'Réponse de M. Jordan du 22/10/2026 (Q-12, DEC-36) : l’Assistant et l’Autorité modifient un ' +
+        'visiteur (qualification) ; la Réception crée mais ne modifie pas ; modification journalisée',
+      // Reste une extension tant que l'acte qui ajoute « Modifier visiteur » à la matrice n'est pas pris.
+      hypothese: 'HYPOTHESE(DEC-36) : « Modifier visiteur », acte à venir',
+      limites:
+        'Nom, prénom, contact, qualification. Fusion de doublons hors MVP. Valeurs avant et après ' +
+        'dans le journal : en attente de Q-5 (seuls les noms des champs sont tracés).',
+      implementee: true,
+    },
     'demande.modifier': {
       roles: ['authority', 'assistant', 'reception'],
       delegues: [],

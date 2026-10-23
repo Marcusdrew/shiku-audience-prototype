@@ -30,6 +30,7 @@ const ROUTES_ATTENDUES = [
   'utilisateurs rattachement',
   'utilisateurs lister',
   'visiteurs creer',
+  'visiteurs modifier',
   'visiteurs rechercher',
 ].sort();
 

@@ -32,6 +32,7 @@ describe('entreesVisibles', () => {
       'POST /audiences/:id/terminer',
       'GET /visiteurs?q=…',
       'POST /visiteurs',
+      'PATCH /visiteurs/:id',
       'GET /utilisateurs',
       'POST /utilisateurs',
       'POST /utilisateurs/rattachement',

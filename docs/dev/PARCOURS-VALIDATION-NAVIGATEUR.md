@@ -16,7 +16,7 @@ Dans PowerShell, à la racine du dépôt :
 | 0.4 | `node --env-file=.env scripts/configurer-compte-service.mjs` puis `… --appliquer` | « fait : créer le client shiku-service » (voir `COMPTES-KEYCLOAK.md`) ; puis `docker compose restart app` |
 | 0.4 bis | `node --env-file=.env scripts/aligner-comptes-test.mjs` (puis `--appliquer` si « À FAIRE ») | 5 lignes `OK` : les comptes de test acceptent les mots de passe de `.env` (voir `COMPTES-KEYCLOAK.md`) |
 | 0.5 | `node --env-file=.env scripts/amorcer-donnees-test.mjs` | « OK : organisation …, 5 comptes rattachés, 2 agendas » |
-| 0.6 | `node --env-file=.env scripts/verifier-parcours.mjs` | 30 lignes `OK`, puis `RESULTAT : TOUT OK` (parcours par l'API, sans navigateur) |
+| 0.6 | `node --env-file=.env scripts/verifier-parcours.mjs` | 33 lignes `OK` (30 avant le lot L1), puis `RESULTAT : TOUT OK` (parcours par l'API, sans navigateur) |
 | 0.7 | `pnpm dev:frontend` | Vite écoute sur `http://localhost:5173` |
 
 Si Keycloak n'écoute pas sur le port 8080 (`KEYCLOAK_PORT` de `.env`), créez `frontend/.env.local` avec `VITE_KEYCLOAK_URL=http://localhost:<KEYCLOAK_PORT>` avant 0.7. Le frontend appelle l'API par `/api` (proxy Vite vers `APP_PORT`).
@@ -38,8 +38,9 @@ Utilisez une **fenêtre de navigation privée par rôle** (ou « Se déconnecter
 |---|---|---|
 | 1.1 | Ouvrir `http://localhost:5173`, « Se connecter », saisir le compte | Retour sur l'application, « Tableau de bord », API et base « ok », compte applicatif « Actif » |
 | 1.2 | Menu | Demandes, Agendas, Répertoire des visiteurs ; **ni** Décisions, **ni** Journal, **ni** Administration |
-| 1.3 | Répertoire des visiteurs : avant toute recherche | Message « Recherchez d'abord le visiteur » ; pas de formulaire de création |
-| 1.4 | Rechercher un nom inexistant, puis créer la fiche (nom, contact) | Fiche créée ; **aucun champ « Qualité / fonction »** (note : saisie par l'Assistant) |
+| 1.3 | Répertoire des visiteurs : avant toute recherche | Message « Recherchez d'abord le visiteur » ; pas de formulaire de création ; contacts de la liste **masqués** (`j***@e***.invalid`, ou `***78`), pas de colonne Qualité, pas de bouton Modifier |
+| 1.4 | Rechercher un nom inexistant, puis créer la fiche (prénom, nom, contact) | Fiche créée ; **aucun champ « Qualité / fonction »** (note : saisie par l'Assistant) |
+| 1.4 bis | Créer une 2ᵉ fiche avec le **même contact** (majuscules permises) | Encadré « Un visiteur a déjà ce contact » avec la fiche existante masquée ; « Créer quand même : autre personne (homonyme distinct) » crée la fiche |
 | 1.5 | Demandes → « Créer une demande » → rechercher ce visiteur → « Choisir » ; choisir un agenda, un objet, un contact → « Enregistrer la demande » | Fiche de la demande `DEM-AAAA-NNNNNN`, statut « Reçue » |
 | 1.6 | Sur la fiche : « Qualification initiale », saisir un texte → « Qualifier » | Statut « Qualifiée » ; **aucun** bouton Valider / Rejeter / Différer |
 | 1.7 | Noter l'adresse de la fiche (URL) | Elle servira aux autres rôles |
@@ -60,6 +61,7 @@ Utilisez une **fenêtre de navigation privée par rôle** (ou « Se déconnecter
 | # | Action | Résultat attendu |
 |---|---|---|
 | 3.1 | Se connecter ; ouvrir la fiche de la demande | **Aucun** bouton de décision ni de planification (droits « D » sans délégation) |
+| 3.1 bis | Répertoire des visiteurs : rechercher le visiteur de 1.4 | Contact **en clair**, colonne Qualité ; « Modifier » → saisir une qualité → « Enregistrer la modification » : la qualité apparaît dans la liste |
 | 3.2 | Opérations du jour | L'audience du jour avec « Démarrer » |
 | 3.3 | « Démarrer » | Statut « En cours », champ « Résultat » |
 | 3.4 | Saisir un résultat → « Terminer » | Statut « Terminée » |
