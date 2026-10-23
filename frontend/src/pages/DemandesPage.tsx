@@ -7,7 +7,7 @@ import {
   listerAgendas,
   listerDemandes,
   rechercherVisiteurs,
-  type StatutDemande,
+  TAILLE_PAGE,
   type Visiteur,
 } from '../api/metier';
 import { useRequete } from '../api/useRequete';
@@ -17,9 +17,10 @@ import { Badge, Card } from '../components/Card';
 import { Champ } from '../components/Champ';
 import { ErreurAction } from '../components/ErreurAction';
 import { ErrorState } from '../components/ErrorState';
+import { Pagination } from '../components/Pagination';
 import { Spinner } from '../components/Spinner';
 import { useAction } from '../components/useAction';
-import { formaterDate, LIBELLES_STATUT, TON_STATUT } from '../lib/libelles';
+import { formaterDate, LIBELLES_STATUT, statutsFiltrables, TON_STATUT } from '../lib/libelles';
 
 export function DemandesPage() {
   const { jeton } = useAuth();
@@ -28,10 +29,11 @@ export function DemandesPage() {
   const [terme, setTerme] = useState('');
   const [recherche, setRecherche] = useState('');
   const [creation, setCreation] = useState(false);
+  const [decalage, setDecalage] = useState(0);
 
   const charger = useCallback(
-    (s: AbortSignal) => listerDemandes(jeton, { statut, q: recherche }, s),
-    [jeton, statut, recherche],
+    (s: AbortSignal) => listerDemandes(jeton, { statut, q: recherche, decalage }, s),
+    [jeton, statut, recherche, decalage],
   );
   const liste = useRequete(charger);
 
@@ -64,6 +66,7 @@ export function DemandesPage() {
               className="filtres"
               onSubmit={(e: FormEvent) => {
                 e.preventDefault();
+                setDecalage(0);
                 setRecherche(terme.trim());
               }}
             >
@@ -71,9 +74,16 @@ export function DemandesPage() {
                 <input id="f-q" value={terme} onChange={(e) => setTerme(e.target.value)} />
               </Champ>
               <Champ id="f-statut" libelle="Statut">
-                <select id="f-statut" value={statut} onChange={(e) => setStatut(e.target.value)}>
+                <select
+                  id="f-statut"
+                  value={statut}
+                  onChange={(e) => {
+                    setDecalage(0);
+                    setStatut(e.target.value);
+                  }}
+                >
                   <option value="">Tous</option>
-                  {(Object.keys(LIBELLES_STATUT) as StatutDemande[]).map((s) => (
+                  {statutsFiltrables(peut('decision.consulter')).map((s) => (
                     <option key={s} value={s}>
                       {LIBELLES_STATUT[s]}
                     </option>
@@ -125,10 +135,13 @@ export function DemandesPage() {
                       ))}
                     </tbody>
                   </table>
-                  <p className="note">
-                    {liste.donnees.total} demande(s) au total, {liste.donnees.elements.length}{' '}
-                    affichée(s).
-                  </p>
+                  <Pagination
+                    decalage={decalage}
+                    taille={TAILLE_PAGE}
+                    affiches={liste.donnees.elements.length}
+                    total={liste.donnees.total}
+                    onChanger={setDecalage}
+                  />
                 </div>
               ))}
           </Card>
@@ -145,6 +158,7 @@ function NouvelleDemande({ onFermer }: { onFermer: () => void }) {
   const { enCours, erreur, executer } = useAction();
   const [q, setQ] = useState('');
   const [visiteurs, setVisiteurs] = useState<Visiteur[] | null>(null);
+  const [termeCherche, setTermeCherche] = useState<string | null>(null);
   const [visiteur, setVisiteur] = useState<Visiteur | null>(null);
   const [nouveauNom, setNouveauNom] = useState('');
   const agendas = useRequete(useCallback((s: AbortSignal) => listerAgendas(jeton, s), [jeton]));
@@ -154,14 +168,20 @@ function NouvelleDemande({ onFermer }: { onFermer: () => void }) {
   const [derogation, setDerogation] = useState('');
 
   async function chercher() {
-    const r = await executer(() => rechercherVisiteurs(jeton, q));
-    if (r) setVisiteurs(r.elements);
+    const r = await executer(() => rechercherVisiteurs(jeton, q.trim()));
+    if (r) {
+      setVisiteurs(r.elements);
+      setTermeCherche(q.trim());
+      if (!nouveauNom) setNouveauNom(q.trim());
+    }
   }
   async function creerNouveauVisiteur() {
-    const v = await executer(() => creerVisiteur(jeton, { nom_complet: nouveauNom }));
+    const v = await executer(() => creerVisiteur(jeton, { nom_complet: nouveauNom.trim() }));
     if (v) {
       setVisiteur(v);
       setNouveauNom('');
+      setVisiteurs(null);
+      setTermeCherche(null);
     }
   }
   async function soumettre(e: FormEvent) {
@@ -220,26 +240,35 @@ function NouvelleDemande({ onFermer }: { onFermer: () => void }) {
               </p>
             ))}
             {peut('visiteur.creer') ? (
-              <>
-                <Champ id="v-nouveau" libelle="Ou créer un nouveau visiteur (nom complet)">
-                  <input
-                    id="v-nouveau"
-                    value={nouveauNom}
-                    onChange={(e) => setNouveauNom(e.target.value)}
-                  />
-                </Champ>
-                <button
-                  type="button"
-                  className="bouton bouton--secondaire"
-                  onClick={() => void creerNouveauVisiteur()}
-                >
-                  Créer le visiteur
-                </button>
-              </>
+              termeCherche === null ? (
+                <p className="note">
+                  Recherchez d’abord le visiteur : la création n’est proposée qu’après une
+                  recherche, pour éviter les doublons.
+                </p>
+              ) : (
+                <>
+                  <Champ id="v-nouveau" libelle="Visiteur absent : créer une fiche (nom complet)">
+                    <input
+                      id="v-nouveau"
+                      maxLength={200}
+                      value={nouveauNom}
+                      onChange={(e) => setNouveauNom(e.target.value)}
+                    />
+                  </Champ>
+                  <button
+                    type="button"
+                    className="bouton bouton--secondaire"
+                    disabled={enCours || !nouveauNom.trim()}
+                    onClick={() => void creerNouveauVisiteur()}
+                  >
+                    Créer le visiteur
+                  </button>
+                </>
+              )
             ) : (
               <p className="note">
-                Votre profil ne peut pas créer de visiteur (règle provisoire, décision DEC-19 en
-                attente) : demandez à un assistant de le créer.
+                Votre profil ne peut pas créer de visiteur : demandez-le à la Réception, à un
+                assistant ou à l’Autorité.
               </p>
             )}
           </>

@@ -1,23 +1,37 @@
 // Parcours métier COMPLET contre le vrai Keycloak, le vrai backend et la vraie base :
 // connexion PKCE de 4 comptes de test → agenda → visiteur → demande → qualification → décision →
-// planification → démarrage → fin → clôture (refusée, H4) → chaîne et journal.
+// planification (Autorité) → démarrage → fin → clôture (Assistant) → chaîne et journal,
+// puis création d'un compte par l'Administrateur via le compte de service Keycloak.
 // Usage : node --env-file=.env scripts/verifier-parcours.mjs
 // Prérequis : `docker compose up --build -d`, puis `node --env-file=.env scripts/amorcer-donnees-test.mjs`.
 // Crée des données FICTIVES (préfixe « PARCOURS ») qui restent en base : le journal est en ajout seul.
-import { API, comptes, connecter, echanger } from './lib/pkce.mjs';
+import { API, comptes, connecter, echanger } from "./lib/pkce.mjs";
 
 let echec = false;
 const verdict = (ok, texte) => {
-  console.log(`${ok ? 'OK  ' : 'ECHEC'} ${texte}`);
+  console.log(`${ok ? "OK  " : "ECHEC"} ${texte}`);
   if (!ok) echec = true;
 };
 
 const jetons = {};
 for (const [nom, [variable, role]] of Object.entries(comptes)) {
-  const c = await connecter(nom, process.env[variable] ?? '');
-  const t = c.code ? await echanger(c.code, c.verifier) : { statut: 0, corps: {} };
+  if (!process.env[variable]) {
+    verdict(false, `${nom} : variable ${variable} absente ou vide dans .env`);
+    process.exit(1);
+  }
+  const c = await connecter(nom, process.env[variable]);
+  const t = c.code
+    ? await echanger(c.code, c.verifier)
+    : { statut: 0, corps: {} };
   if (t.statut !== 200) {
-    verdict(false, `${nom} : connexion impossible`);
+    const detail =
+      c.motif ??
+      `étape « ${c.etape ?? "échange du code"} »${c.statut ? `, HTTP ${c.statut}` : ""}`;
+    verdict(false, `${nom} : connexion impossible : ${detail}`);
+    if (c.motif?.startsWith("identifiant"))
+      console.log(
+        "Diagnostic : node --env-file=.env scripts/aligner-comptes-test.mjs (simulation ; ne lance pas ce parcours en boucle : le realm bloque après plusieurs échecs).",
+      );
     process.exit(1);
   }
   jetons[role] = t.corps.access_token; // le dernier compte d'un même rôle l'emporte (assistant2)
@@ -28,7 +42,7 @@ async function appel(qui, methode, chemin, corps) {
     method: methode,
     headers: {
       authorization: `Bearer ${jetons[qui]}`,
-      ...(corps === undefined ? {} : { 'content-type': 'application/json' }),
+      ...(corps === undefined ? {} : { "content-type": "application/json" }),
     },
     body: corps === undefined ? undefined : JSON.stringify(corps),
   });
@@ -41,54 +55,251 @@ const refuse = async (promesse, texte) => {
   attendre(r.statut === 403, texte, r);
 };
 
-const moi = await appel('reception', 'GET', '/moi');
-attendre(moi.statut === 200, '/moi : identité vérifiée', moi);
+const moi = await appel("reception", "GET", "/moi");
+attendre(moi.statut === 200, "/moi : identité vérifiée", moi);
 
-const agendas = await appel('reception', 'GET', '/agendas');
-attendre(agendas.statut === 200 && agendas.corps.elements?.length > 0, 'la réception liste les agendas (amorçage fait)', agendas);
+const agendas = await appel("reception", "GET", "/agendas");
+attendre(
+  agendas.statut === 200 && agendas.corps.elements?.length > 0,
+  "la réception liste les agendas (amorçage fait)",
+  agendas,
+);
 if (agendas.statut !== 200 || !agendas.corps.elements?.length) {
-  console.log('Lancez d’abord : node --env-file=.env scripts/amorcer-donnees-test.mjs');
+  console.log(
+    "Lancez d’abord : node --env-file=.env scripts/amorcer-donnees-test.mjs",
+  );
   process.exit(1);
 }
 const agendaId = agendas.corps.elements[0].id;
 
 const nom = `PARCOURS ${new Date().toISOString()}`;
-const v = await appel('assistant', 'POST', '/visiteurs', { nom_complet: nom, contact: 'parcours@exemple.invalid' });
-attendre(v.statut === 201, 'l’assistant crée un visiteur fictif', v);
-await refuse(appel('reception', 'POST', '/visiteurs', { nom_complet: 'x' }), 'la réception ne peut pas créer de visiteur (DEC-19 ouverte)');
+const v = await appel("assistant", "POST", "/visiteurs", {
+  nom_complet: nom,
+  contact: "parcours@exemple.invalid",
+});
+attendre(v.statut === 201, "l’assistant crée un visiteur fictif", v);
+// DEC-19 tranchée le 19/10 : la Réception crée une fiche minimale (identité, contact), sans qualification.
+const vr = await appel("reception", "POST", "/visiteurs", {
+  nom_complet: `${nom} (réception)`,
+  contact: "reception@exemple.invalid",
+});
+attendre(
+  vr.statut === 201,
+  "la réception crée une fiche visiteur minimale",
+  vr,
+);
+const vq = await appel("reception", "POST", "/visiteurs", {
+  nom_complet: `${nom} (réception qualifiée)`,
+  qualite: "Titre fictif",
+});
+attendre(
+  vq.statut === 400,
+  "la qualification du visiteur est refusée à la réception",
+  vq,
+);
 
-const d = await appel('reception', 'POST', '/demandes', { visiteur_id: v.corps.id, agenda_id: agendaId, objet: 'Parcours de vérification (fictif)', contact: 'parcours@exemple.invalid' });
-attendre(d.statut === 201 && /^DEM-\d{4}-\d{6}$/.test(d.corps.reference ?? ''), `la réception crée la demande ${d.corps.reference}`, d);
+const d = await appel("reception", "POST", "/demandes", {
+  visiteur_id: v.corps.id,
+  agenda_id: agendaId,
+  objet: "Parcours de vérification (fictif)",
+  contact: "parcours@exemple.invalid",
+});
+attendre(
+  d.statut === 201 && /^DEM-\d{4}-\d{6}$/.test(d.corps.reference ?? ""),
+  `la réception crée la demande ${d.corps.reference}`,
+  d,
+);
 const id = d.corps.id;
-await refuse(appel('assistant', 'POST', '/demandes', {}), 'l’assistant ne crée pas de demande (403)');
+await refuse(
+  appel("administrator", "POST", "/demandes", {}),
+  "l’administrateur ne crée pas de demande (403, matrice : « — »)",
+);
 
-const q = await appel('reception', 'POST', `/demandes/${id}/qualification`, { qualification: 'Recevable (fictif)' });
-attendre(q.statut === 200 && q.corps.statut === 'qualifiee', 'la réception qualifie la demande', q);
-await refuse(appel('reception', 'POST', `/demandes/${id}/decision`, { type: 'valider', motif: 'non' }), 'la réception ne peut pas décider (403)');
+const q = await appel("reception", "POST", `/demandes/${id}/qualification`, {
+  qualification: "Recevable (fictif)",
+});
+attendre(
+  q.statut === 200 && q.corps.statut === "qualifiee",
+  "la réception qualifie la demande",
+  q,
+);
+await refuse(
+  appel("reception", "POST", `/demandes/${id}/decision`, {
+    type: "valider",
+    motif: "non",
+  }),
+  "la réception ne peut pas décider (403)",
+);
 
-const f = await appel('authority', 'GET', '/decisions/file');
-attendre(f.statut === 200 && f.corps.elements.some((e) => e.id === id), 'l’autorité voit la demande dans la file de décisions', f);
-const dec = await appel('authority', 'POST', `/demandes/${id}/decision`, { type: 'valider', motif: 'Accord de principe (fictif)' });
-attendre(dec.statut === 201 && dec.corps.statut_demande === 'validee', 'l’autorité valide', dec);
+const f = await appel("authority", "GET", "/decisions/file");
+attendre(
+  f.statut === 200 && f.corps.elements.some((e) => e.id === id),
+  "l’autorité voit la demande dans la file de décisions",
+  f,
+);
+const dec = await appel("authority", "POST", `/demandes/${id}/decision`, {
+  type: "valider",
+  motif: "Accord de principe (fictif)",
+});
+attendre(
+  dec.statut === 201 && dec.corps.statut_demande === "validee",
+  "l’autorité valide",
+  dec,
+);
 
-const a = await appel('assistant', 'POST', '/audiences', { demande_id: id, debut_prevu: '2026-12-01T09:00:00Z', duree_prevue_minutes: 30 });
-attendre(a.statut === 201 && a.corps.statut === 'planifiee', 'l’assistant planifie l’audience', a);
+const corpsAudience = {
+  demande_id: id,
+  debut_prevu: "2026-12-01T09:00:00Z",
+  duree_prevue_minutes: 30,
+};
+await refuse(
+  appel("assistant", "POST", "/audiences", corpsAudience),
+  "l’assistant ne planifie pas sans délégation (« D » de la matrice, 403)",
+);
+const a = await appel("authority", "POST", "/audiences", corpsAudience);
+attendre(
+  a.statut === 201 && a.corps.statut === "planifiee",
+  "l’autorité planifie l’audience",
+  a,
+);
 const aid = a.corps.id;
-const dm = await appel('assistant', 'POST', `/audiences/${aid}/demarrer`);
-attendre(dm.statut === 200 && dm.corps.statut === 'en_cours', 'l’assistant démarre l’audience', dm);
-const tm = await appel('assistant', 'POST', `/audiences/${aid}/terminer`, { resultat: 'Entretien tenu (fictif)' });
-attendre(tm.statut === 200 && tm.corps.statut === 'terminee', 'l’assistant termine l’audience et enregistre le résultat', tm);
-for (const qui of ['reception', 'assistant', 'authority', 'administrator']) {
-  const c = await appel(qui, 'POST', `/audiences/${aid}/cloturer`);
-  attendre(c.statut === 403, `clôture refusée à ${qui} (H4 : responsable non désigné)`, c);
+const dm = await appel("assistant", "POST", `/audiences/${aid}/demarrer`);
+attendre(
+  dm.statut === 200 && dm.corps.statut === "en_cours",
+  "l’assistant démarre l’audience",
+  dm,
+);
+const tm = await appel("assistant", "POST", `/audiences/${aid}/terminer`, {
+  resultat: "Entretien tenu (fictif)",
+});
+attendre(
+  tm.statut === 200 && tm.corps.statut === "terminee",
+  "l’assistant termine l’audience et enregistre le résultat",
+  tm,
+);
+for (const qui of ["reception", "administrator"]) {
+  const c = await appel(qui, "POST", `/audiences/${aid}/cloturer`);
+  attendre(c.statut === 403, `clôture refusée à ${qui} (matrice)`, c);
 }
+const cl = await appel("assistant", "POST", `/audiences/${aid}/cloturer`);
+attendre(
+  cl.statut === 200 &&
+    cl.corps.statut === "cloturee" &&
+    !!cl.corps.conservation_echeance,
+  `l’assistant clôture ; conservation jusqu’au ${cl.corps.conservation_echeance}`,
+  cl,
+);
 
-const det = await appel('authority', 'GET', `/demandes/${id}`);
-attendre(det.statut === 200 && det.corps.decisions?.length === 1 && det.corps.audience?.id === aid, 'la chaîne demande → décision → audience est restituée', det);
-const j = await appel('authority', 'GET', `/journal?objet_type=demande&objet_id=${id}`);
+const det = await appel("authority", "GET", `/demandes/${id}`);
+attendre(
+  det.statut === 200 &&
+    det.corps.decisions?.length === 1 &&
+    det.corps.audience?.id === aid,
+  "la chaîne demande → décision → audience est restituée",
+  det,
+);
+const j = await appel(
+  "authority",
+  "GET",
+  `/journal?objet_type=demande&objet_id=${id}`,
+);
 const actions = (j.corps.elements ?? []).map((e) => e.action).reverse();
-attendre(j.statut === 200 && actions.join() === 'demande.creer,demande.qualifier_initialement,decision.valider', `le journal retrace les actes : ${actions.join(' → ')}`, j);
-await refuse(appel('assistant', 'GET', '/journal'), 'l’assistant ne lit pas le journal (H9)');
+attendre(
+  j.statut === 200 &&
+    actions.join() === "demande.creer,demande.qualifier,decision.valider",
+  `le journal retrace les actes : ${actions.join(" → ")}`,
+  j,
+);
+await refuse(
+  appel("assistant", "GET", "/journal"),
+  "l’assistant ne lit pas le journal",
+);
+await refuse(
+  appel("administrator", "GET", "/journal"),
+  "l’administrateur ne lit pas le journal sans habilitation explicite (« D »)",
+);
 
-console.log(echec ? 'RESULTAT : ECHEC' : 'RESULTAT : TOUT OK');
+// Gestion des comptes : l'Administrateur, via le compte de service Keycloak (vrai Keycloak ici).
+const courriel = `parcours.${Date.now()}@example.test`;
+const nu = await appel("administrator", "POST", "/utilisateurs", {
+  prenom: "Parcours",
+  nom: "Fictif",
+  courriel,
+  role: "assistant",
+});
+attendre(
+  nu.statut === 201,
+  "l’administrateur crée un compte (Keycloak + rattachement)",
+  nu,
+);
+await refuse(
+  appel("authority", "POST", "/utilisateurs", {
+    prenom: "X",
+    nom: "Y",
+    courriel: "x@example.test",
+    role: "assistant",
+  }),
+  "l’autorité ne gère pas les comptes (profil Administrateur dormant : inactif)",
+);
+const doublon = await appel("administrator", "POST", "/utilisateurs", {
+  prenom: "Parcours",
+  nom: "Fictif",
+  courriel,
+  role: "assistant",
+});
+attendre(doublon.statut === 409, "le même courriel est refusé (409)", doublon);
+const inconnu = await appel(
+  "administrator",
+  "POST",
+  "/utilisateurs/rattachement",
+  {
+    keycloak_sub: "00000000-0000-4000-8000-000000000000",
+    nom_complet: "Inventé Fictif",
+  },
+);
+attendre(
+  inconnu.statut === 422,
+  "un identifiant Keycloak inventé est refusé (422)",
+  inconnu,
+);
+
+// Liste blanche (arbitrage du 19/10) : l'Administrateur n'attribue ni Autorité ni Administrateur.
+await refuse(
+  appel("administrator", "POST", "/utilisateurs", {
+    prenom: "Parcours",
+    nom: "Autorité",
+    courriel: `parcours.autorite.${Date.now()}@example.test`,
+    role: "authority",
+  }),
+  "l’administrateur ne peut pas créer un compte Autorité",
+);
+
+// Statut neutre (arbitrage du 19/10) : une demande rejetée apparaît « non_retenue » à la réception.
+const dr = await appel("reception", "POST", "/demandes", {
+  visiteur_id: vr.corps.id,
+  agenda_id: agendaId,
+  objet: "Parcours : demande à rejeter (fictif)",
+  contact: "c@example.test",
+});
+attendre(dr.statut === 201, "la réception crée une seconde demande", dr);
+const rej = await appel(
+  "authority",
+  "POST",
+  `/demandes/${dr.corps.id}/decision`,
+  {
+    type: "rejeter",
+    motif: "Motif fictif de rejet",
+  },
+);
+attendre(rej.statut === 201, "l’autorité rejette avec motif", rej);
+const vueRec = await appel("reception", "GET", `/demandes/${dr.corps.id}`);
+attendre(
+  vueRec.statut === 200 &&
+    vueRec.corps.statut === "non_retenue" &&
+    !JSON.stringify(vueRec.corps).includes("Motif fictif"),
+  "la réception voit « non retenue », sans motif ni décision",
+  vueRec,
+);
+
+console.log(echec ? "RESULTAT : ECHEC" : "RESULTAT : TOUT OK");
 process.exit(echec ? 1 : 0);

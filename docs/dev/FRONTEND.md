@@ -31,13 +31,16 @@ Choix et justification :
 | `GET /sante`, `GET /moi`, `GET /droits` sur le tableau de bord et le menu | Réel |
 | Rôles lus dans le jeton | Réel, **affichage seulement** (signature non vérifiée côté navigateur) ; l'identité qui fait foi vient de `GET /moi` |
 | Demandes (liste, recherche, création, détail, qualification, correction), Décisions (file, valider/rejeter/différer), Agendas et planning, Opérations du jour (démarrer/terminer), Journal, Administration (comptes) | **Réel**, branchés sur l'API (`docs/dev/API.md`). Boutons et menus pilotés par `GET /droits` ; le serveur recontrôle chaque action |
-| Clôture d'audience | Écran prévu, bouton absent tant que `audience.cloturer` n'est accordée à aucun rôle (H4) |
-| Dossiers relationnels, salle d'attente, priorité à six critères | **Aucune API** : l'écran l'indique. Aucune donnée fictive |
+| Clôture d'audience | Bouton « Clôturer » si `/droits` accorde `audience.cloturer` (Autorité, Assistant), avec confirmation explicite (irréversible) ; durée réelle et responsable de suivi affichés |
+| Répertoire des visiteurs (`/relationnel`) | **Réel** (`GET /visiteurs`, `POST /visiteurs`) : recherche avant création (anti-doublon guidé), champ de qualification masqué hors Assistant et Autorité (refusé par le serveur) ; visible selon `visiteur.rechercher` |
+| Statut d'une demande rejetée vue par la Réception | Statut neutre `non_retenue` fourni par le serveur, affiché « Non retenue — ne pas planifier » ; filtre adapté |
+| Journal | Filtres réels du serveur (type et identifiant d'objet) et pagination. Restrictions par catégorie (arbitrage du 19/10) : **non appliquées par le serveur** (Q-1) |
+| Dossiers relationnels (notes, attestations), salle d'attente, priorité à six critères, délégations | **Aucune API** : l'écran l'indique. Aucune donnée fictive |
 | Indicateurs du tableau de bord (EF03-17) | Absents : aucune API |
 
 ## Sécurité : à ne pas oublier
 
-- Le backend valide les jetons et contrôle chaque droit côté serveur (`ETAPE-1-AUTHENTIFICATION.md`). La garde React, le masquage du menu et des boutons ne sont **pas** des contrôles d'accès (CONTRIBUTING § 4.1) : ils reflètent `GET /droits`, matrice PROVISOIRE (H1). Le jeton est transmis en `Bearer` à chaque appel métier.
+- Le backend valide les jetons et contrôle chaque droit côté serveur (`ETAPE-1-AUTHENTIFICATION.md`). La garde React, le masquage du menu et des boutons ne sont **pas** des contrôles d'accès (CONTRIBUTING § 4.1) : ils reflètent `GET /droits`, matrice officielle Gate 02A (extensions hypothétiques, `HYPOTHESES.md`). Le jeton est transmis en `Bearer` à chaque appel métier.
 - Menu par rôle : `HYPOTHESE(DEC-28)`, déduit du cahier des charges, jamais décisionnel.
 - Le Protocole est un profil de délégation (D04-24) : il n'est pas dans le jeton, donc pas dans le menu.
 

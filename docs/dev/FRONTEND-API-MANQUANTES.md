@@ -2,7 +2,7 @@
 
 > **Mise à jour du 14 octobre 2026.** Demandes, décisions, agendas, audiences (planification, démarrage, fin, clôture), journal et comptes sont **implémentés** : voir `docs/dev/API.md`. Les tableaux ci-dessous conservent les propositions d'origine ; seule la part non listée dans `API.md` reste à faire (priorité à six critères, catégorie protocolaire, reprogrammation, annulation, arrivées et appels, dossier relationnel, délégations, tableau de bord).
 
-État du backend au 2026-10-14 : routes listées dans `API.md`. Validation de jeton et refus par défaut en place ; matrice RBAC provisoire ; pas de CORS. Ce paragraphe décrivait l'état du 2026-10-11 (une seule route, `GET /sante`).
+État du backend au 2026-10-14 : routes listées dans `API.md`. Validation de jeton et refus par défaut en place ; matrice RBAC officielle Gate 02A (extensions hypothétiques, voir `HYPOTHESES.md`) ; pas de CORS. Ce paragraphe décrivait l'état du 2026-10-11 (une seule route, `GET /sante`).
 
 Les routes ci-dessous sont des **propositions** pour dimensionner le travail, non des contrats. Chacune relève d'une tâche backend distincte, après décision du représentant habilité. Règles communes à toutes : droit évalué côté serveur à l'exécution, clé d'organisation, entrée de journal attribuée pour toute action sensible, données fictives en test (CONTRIBUTING § 4).
 
@@ -11,7 +11,7 @@ Les routes ci-dessous sont des **propositions** pour dimensionner le travail, no
 | Tâche | Contenu | Story / décision |
 |---|---|---|
 | ~~B-00 Validation des jetons~~ **faite (hors résolution `keycloak_sub` → `utilisateur`, faite par `ContexteGuard`)** | Valider le JWT Keycloak (signature via JWKS, `iss`, `exp`, audience), garde Nest, résolution `keycloak_sub` → `utilisateur`. Tests : sans jeton 401, jeton expiré 401, signature invalide 401 | US-05-002, US-05-003 ; `DEC-16` (authentification) |
-| ~~B-01 Habilitation~~ **faite, matrice PROVISOIRE** | Évaluer le droit d'une action selon la matrice RBAC, refuser par défaut | US-05-003 |
+| ~~B-01 Habilitation~~ **faite, matrice officielle Gate 02A** | Évaluer le droit d'une action selon la matrice RBAC, refuser par défaut | US-05-003 |
 | **B-02 Journal** | Écriture attribuée, ajout seul garanti par la base | US-05-010, US-05-011 |
 | **B-03 CORS ou même origine** | Choix à arrêter ; le proxy Vite ne couvre que le développement | — |
 | **B-04 Profil courant** (partiel : `GET /moi` et `GET /droits` existent, sans délégations) | `GET /moi` : identité, rôles, délégations actives (le Protocole n'est pas dans le jeton, D04-24) | US-05-009 |

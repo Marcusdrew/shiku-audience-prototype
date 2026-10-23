@@ -36,7 +36,7 @@ Dépendance du guide : `US-05-011` suppose `US-05-010` (modèle et écriture du 
 | Le **rôle de purge** peut-il modifier ou ajouter ? | **Non** (lire et supprimer seulement) | Groupe F |
 | Le **propriétaire du schéma** (`shiku_migrator`) peut-il contourner ? | **Oui** | H1, H2 : **limite** |
 | Un **superutilisateur PostgreSQL** peut-il contourner ? | **Oui**, inhérent à PostgreSQL | H3 : **limite** |
-| Le rôle de purge supprime-t-il seulement à l'échéance ? | **Non, rien ne l'impose** | H4 : **limite** |
+| Le rôle de purge supprime-t-il seulement à l'échéance ? | **Oui pour le journal** : un déclencheur refuse la suppression d'une entrée de moins de 6 ans et trace chaque purge (`journal_purge`). Le propriétaire du schéma ou un superutilisateur peut contourner : **limite documentée** | Durée de 6 ans à confirmer |
 | L'heure d'une entrée est-elle forcée par la base ? | **Non** | H5 : **limite** |
 
 ## Administrateur applicatif et superutilisateur PostgreSQL : deux choses différentes

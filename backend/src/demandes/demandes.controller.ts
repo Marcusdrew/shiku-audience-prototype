@@ -33,6 +33,14 @@ const JOINTURES = `FROM demande d
   JOIN utilisateur r ON r.id = d.responsable_suivi_id
   JOIN utilisateur c ON c.id = d.cree_par`;
 
+/**
+ * Arbitrage de M. Jordan du 19/10/2026 (point 7) : la Réception voit un statut NEUTRE pour une
+ * demande rejetée, sans motif, sans auteur de la décision et sans dossier relationnel. Règle
+ * appliquée ici, côté serveur, à toute personne qui n'a pas le droit `decision.consulter`.
+ * Libellé de l'arbitrage : « non retenue, ne pas planifier » (donné en exemple : à confirmer, Q-14).
+ */
+export const STATUT_NEUTRE_REJET = 'non_retenue';
+
 @Controller('demandes')
 export class DemandesController {
   constructor(
@@ -40,6 +48,22 @@ export class DemandesController {
     private readonly journal: JournalService,
     private readonly habilitation: HabilitationService,
   ) {}
+
+  /** Vrai si l'appelant ne doit pas connaître l'issue d'une décision (Réception). */
+  private statutNeutre(ctx: Contexte): boolean {
+    return !this.habilitation.estAutorise(ctx.identite.roles, 'decision.consulter');
+  }
+
+  /** Statut tel que l'appelant a le droit de le connaître (y compris dans un message d'erreur). */
+  private statutVisible(ctx: Contexte, statut: string): string {
+    return statut === 'rejetee' && this.statutNeutre(ctx) ? STATUT_NEUTRE_REJET : statut;
+  }
+
+  private projeter<T extends Record<string, unknown>>(ctx: Contexte, ligne: T): T {
+    if (this.statutNeutre(ctx) && ligne.statut === 'rejetee')
+      return { ...ligne, statut: STATUT_NEUTRE_REJET };
+    return ligne;
+  }
 
   private async chargerVerrouillee(c: PoolClient, ctx: Contexte, id: string) {
     const { rows } = await c.query<{ id: string; statut: StatutDemande }>(
@@ -132,12 +156,15 @@ export class DemandesController {
     const { limite, decalage } = pagination(q);
     let statut: string | null = null;
     if (q.statut !== undefined) {
-      if (
-        typeof q.statut !== 'string' ||
-        !(STATUTS_DEMANDE as readonly string[]).includes(q.statut)
-      )
+      // Pour la Réception, « rejetee » n'existe pas : seul le statut neutre est connu (et filtrable,
+      // ce qui ne révèle rien de plus que la liste elle-même).
+      const neutre = this.statutNeutre(ctx);
+      const connus: readonly string[] = neutre
+        ? [...STATUTS_DEMANDE.filter((s) => s !== 'rejetee'), STATUT_NEUTRE_REJET]
+        : STATUTS_DEMANDE;
+      if (typeof q.statut !== 'string' || !connus.includes(q.statut))
         throw new ErreurValidation([{ champ: 'statut', message: 'Statut inconnu.' }]);
-      statut = q.statut;
+      statut = q.statut === STATUT_NEUTRE_REJET ? 'rejetee' : q.statut;
     }
     const agendaId =
       typeof q.agenda_id === 'string' ? exigerUuidParam('agenda_id', q.agenda_id) : null;
@@ -165,7 +192,7 @@ export class DemandesController {
       elements: rows.map((r) => {
         const copie = { ...(r as Record<string, unknown>) };
         delete copie.total;
-        return copie;
+        return this.projeter(ctx, copie);
       }),
       total,
       limite,
@@ -191,7 +218,7 @@ export class DemandesController {
       [id, ctx.organisationId],
     );
     if (!rows[0]) throw new NotFoundException('Demande introuvable.');
-    const res: Record<string, unknown> = { ...rows[0] };
+    const res: Record<string, unknown> = this.projeter(ctx, { ...rows[0] });
     if (!avecChaine) return res;
     const roles = ctx.identite.roles;
     if (this.habilitation.estAutorise(roles, 'decision.consulter')) {
@@ -205,9 +232,12 @@ export class DemandesController {
     }
     if (this.habilitation.estAutorise(roles, 'audience.consulter')) {
       const a = await q.query(
-        `SELECT id, statut, agenda_id, debut_prevu, duree_prevue_minutes, debut_reel, fin_reel,
-                resultat, cloturee_le, conservation_echeance::text AS conservation_echeance
-           FROM audience WHERE demande_id = $1 AND organisation_id = $2`,
+        `SELECT au.id, au.statut, au.agenda_id, au.debut_prevu, au.duree_prevue_minutes,
+                au.debut_reel, au.fin_reel, au.resultat, au.cloturee_le,
+                au.conservation_echeance::text AS conservation_echeance,
+                au.responsable_suivi_id, u.nom_complet AS responsable_suivi_nom
+           FROM audience au JOIN utilisateur u ON u.id = au.responsable_suivi_id
+          WHERE au.demande_id = $1 AND au.organisation_id = $2`,
         [id, ctx.organisationId],
       );
       res.audience = a.rows[0] ?? null;
@@ -244,7 +274,9 @@ export class DemandesController {
       );
       if (!cur.rows[0]) throw new NotFoundException('Demande introuvable.');
       if (!STATUTS_MODIFIABLES.includes(cur.rows[0].statut))
-        throw new ConflictException(`Demande non modifiable au statut « ${cur.rows[0].statut} ».`);
+        throw new ConflictException(
+          `Demande non modifiable au statut « ${this.statutVisible(ctx, cur.rows[0].statut)} ».`,
+        );
       if (champs.agenda_id) {
         const r = await c.query(
           `SELECT 1 FROM agenda WHERE id=$1 AND organisation_id=$2 AND actif`,
@@ -281,7 +313,7 @@ export class DemandesController {
 
   @Post(':id/qualification')
   @HttpCode(200)
-  @ExigeDroit('demande.qualifier_initialement')
+  @ExigeDroit('demande.qualifier')
   async qualifier(
     @ContexteCourant() ctx: Contexte,
     @Param('id') idBrut: string,
@@ -294,7 +326,9 @@ export class DemandesController {
     return enTransaction(this.pool, async (c) => {
       const d = await this.chargerVerrouillee(c, ctx, id);
       if (d.statut !== 'recue')
-        throw new ConflictException(`Qualification impossible au statut « ${d.statut} ».`);
+        throw new ConflictException(
+          `Qualification impossible au statut « ${this.statutVisible(ctx, d.statut)} ».`,
+        );
       await c.query(
         `UPDATE demande SET statut='qualifiee', qualification_initiale=$3, qualifiee_par=$4,
                 qualifiee_le=now(), modifie_le=now() WHERE id=$1 AND organisation_id=$2`,
@@ -303,7 +337,7 @@ export class DemandesController {
       await this.journal.enregistrer(c, {
         organisationId: ctx.organisationId,
         utilisateurId: ctx.utilisateurId,
-        action: 'demande.qualifier_initialement',
+        action: 'demande.qualifier',
         objetType: 'demande',
         objetId: id,
       });

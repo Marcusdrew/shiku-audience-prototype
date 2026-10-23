@@ -19,6 +19,7 @@ gen() { head -c 256 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 32; }
 umask 077
 : > .env
 while IFS= read -r line || [ -n "$line" ]; do
+  line=${line%$'\r'}   # tolère un .env.example en CRLF (checkout Windows)
   case "$line" in
     *PASSWORD*=) printf '%s%s\n' "$line" "$(gen)" >> .env ;;
     *)           printf '%s\n' "$line" >> .env ;;

@@ -40,6 +40,7 @@ Si `.env` manque, Compose s'arrête avec un message clair : `DB_APP_PASSWORD man
 | `DB_MIGRATOR_PASSWORD` | Le rôle `shiku_migrator` (propriétaire du schéma) : uniquement le service `migrate` |
 | `DB_APP_PASSWORD` | Le rôle `shiku_app` : uniquement le service `app` |
 | `DB_PURGE_PASSWORD` | Le rôle `shiku_purge` : personne pour l'instant (le module de conservation viendra au Sprint 3) |
+| `DB_AUDIT_PASSWORD` | Le rôle `shiku_audit` (lecture seule du journal) : personne pour l'instant |
 | `DB_KEYCLOAK_PASSWORD` | Le rôle `keycloak` et sa base |
 | `KEYCLOAK_ADMIN_PASSWORD` | Le compte administrateur de la console Keycloak |
 | `KC_PASSWORD_RECEPTION`, `_ASSISTANT1`, `_ASSISTANT2`, `_AUTHORITY`, `_ADMIN` | Les 5 comptes de test fictifs du realm |

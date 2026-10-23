@@ -23,6 +23,7 @@ import { ErrorState } from '../components/ErrorState';
 import { Spinner } from '../components/Spinner';
 import { useAction } from '../components/useAction';
 import {
+  dureeReelle,
   formaterDate,
   LIBELLES_AUDIENCE,
   LIBELLES_DECISION,
@@ -82,7 +83,7 @@ function Detail({ d, recharger }: { d: Demande; recharger: () => void }) {
         </dl>
       </Card>
 
-      {peut('demande.qualifier_initialement') && d.statut === 'recue' && (
+      {peut('demande.qualifier') && d.statut === 'recue' && (
         <Qualification id={d.id} recharger={recharger} />
       )}
       {peut('demande.modifier') && STATUTS_MODIFIABLES.includes(d.statut) && (
@@ -182,7 +183,9 @@ function Decisions({ d, recharger }: { d: Demande; recharger: () => void }) {
   const { enCours, erreur, executer } = useAction();
   const [motif, setMotif] = useState('');
   const decidable = peut('decision.valider_rejeter') && STATUTS_DECIDABLES.includes(d.statut);
+  const sansMotif = motif.trim() === '';
   async function choisir(type: Decision['type']) {
+    if (sansMotif) return; // le serveur l'exige aussi (400) : on évite seulement l'aller-retour
     if (await executer(() => decider(jeton, d.id, type, motif))) {
       setMotif('');
       recharger();
@@ -207,6 +210,7 @@ function Decisions({ d, recharger }: { d: Demande; recharger: () => void }) {
           <Champ id="dec-motif" libelle="Motif (obligatoire)">
             <textarea
               id="dec-motif"
+              required
               rows={2}
               maxLength={2000}
               value={motif}
@@ -218,7 +222,7 @@ function Decisions({ d, recharger }: { d: Demande; recharger: () => void }) {
             <button
               type="button"
               className="bouton"
-              disabled={enCours}
+              disabled={enCours || sansMotif}
               onClick={() => void choisir('valider')}
             >
               Valider
@@ -226,7 +230,7 @@ function Decisions({ d, recharger }: { d: Demande; recharger: () => void }) {
             <button
               type="button"
               className="bouton bouton--secondaire"
-              disabled={enCours}
+              disabled={enCours || sansMotif}
               onClick={() => void choisir('rejeter')}
             >
               Rejeter
@@ -235,7 +239,7 @@ function Decisions({ d, recharger }: { d: Demande; recharger: () => void }) {
               <button
                 type="button"
                 className="bouton bouton--secondaire"
-                disabled={enCours}
+                disabled={enCours || sansMotif}
                 onClick={() => void choisir('differer')}
               >
                 Différer
@@ -305,7 +309,9 @@ function AudienceCarte({ d, recharger }: { d: Demande; recharger: () => void }) 
   const { peut } = useDroits();
   const { enCours, erreur, executer } = useAction();
   const [resultat, setResultat] = useState('');
+  const [confirmation, setConfirmation] = useState(false);
   const a = d.audience!;
+  const duree = dureeReelle(a.debut_reel, a.fin_reel);
   async function agir(f: () => Promise<unknown>) {
     if (await executer(f)) recharger();
   }
@@ -326,6 +332,10 @@ function AudienceCarte({ d, recharger }: { d: Demande; recharger: () => void }) 
         <dd>
           {formaterDate(a.debut_reel)} → {formaterDate(a.fin_reel)}
         </dd>
+        <dt>Durée réelle</dt>
+        <dd>{duree === null ? '—' : `${duree} min`}</dd>
+        <dt>Responsable de suivi de l’audience</dt>
+        <dd>{a.responsable_suivi_nom ?? '—'}</dd>
         <dt>Résultat</dt>
         <dd>{a.resultat ?? '—'}</dd>
         {a.cloturee_le && (
@@ -373,18 +383,42 @@ function AudienceCarte({ d, recharger }: { d: Demande; recharger: () => void }) 
       )}
       {a.statut === 'terminee' &&
         (peut('audience.cloturer') ? (
-          <button
-            type="button"
-            className="bouton"
-            disabled={enCours}
-            onClick={() => void agir(() => cloturerAudience(jeton, a.id))}
-          >
-            Clôturer
-          </button>
+          confirmation ? (
+            <div
+              className="alerte alerte--info"
+              role="alertdialog"
+              aria-label="Confirmer la clôture"
+            >
+              <p>
+                La clôture est <strong>irréversible</strong> et ouvre le délai de conservation de 5
+                ans. Vérifiez le résultat, la durée réelle et le responsable de suivi.
+              </p>
+              <div className="actions">
+                <button
+                  type="button"
+                  className="bouton"
+                  disabled={enCours}
+                  onClick={() => void agir(() => cloturerAudience(jeton, a.id))}
+                >
+                  Confirmer la clôture
+                </button>
+                <button
+                  type="button"
+                  className="bouton bouton--secondaire"
+                  onClick={() => setConfirmation(false)}
+                >
+                  Annuler
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button type="button" className="bouton" onClick={() => setConfirmation(true)}>
+              Clôturer
+            </button>
+          )
         ) : (
           <p className="note">
-            Clôture indisponible : le responsable de la clôture n’est pas encore désigné (hypothèse
-            H4, décision métier en attente).
+            Clôture réservée à l’Autorité et à l’Assistant (arbitrage du 19/10/2026).
           </p>
         ))}
     </Card>

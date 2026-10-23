@@ -5,6 +5,8 @@
 **Tâche ou story :** `T0-xx` / `US-05-xxx`
 **Sprint :** 
 
+**Classe du changement :** <!-- une seule : fonctionnalité / correctif / sécurité / documentation / outillage -->
+
 ## Recette
 
 <!-- Recopiez les cases de recette du guide de sprint et cochez celles qui sont vraies. -->

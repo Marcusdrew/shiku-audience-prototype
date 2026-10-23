@@ -216,9 +216,10 @@ export class AudiencesController {
   }
 
   /**
-   * Clôture du traitement. Le droit `audience.cloturer` n'est accordé à AUCUN rôle tant que le
-   * métier n'a pas désigné le responsable (HYPOTHESE H4) : la route répond 403 à tous.
-   * La logique est néanmoins complète et testée avec une matrice d'essai.
+   * Clôture du traitement : l'Assistant ou l'Autorité clôt directement (arbitrage de M. Jordan du
+   * 19/10/2026) ; les autres rôles reçoivent 403. Seule une audience démarrée puis terminée, donc avec
+   * résultat et durée réelle, peut être clôturée. Aucune route ne la rouvre : la clôture est
+   * irréversible et fixe le point de départ de la conservation de 5 ans.
    */
   @Post(':id/cloturer')
   @HttpCode(200)
@@ -230,9 +231,11 @@ export class AudiencesController {
       if (a.statut !== 'terminee')
         throw new ConflictException(`Clôture impossible au statut « ${a.statut} ».`);
       // D03-06 / D04-06 : point de départ de conservation à 5 ans, calculé par la base.
-      await c.query(
+      const cl = await c.query<{ duree_prevue_minutes: number; duree_reelle_minutes: number }>(
         `UPDATE audience SET statut='cloturee', cloturee_par=$2, cloturee_le=now(),
-                conservation_echeance=(now() + interval '5 years')::date WHERE id=$1`,
+                conservation_echeance=(now() + interval '5 years')::date WHERE id=$1
+         RETURNING duree_prevue_minutes,
+                   round(extract(epoch FROM (fin_reel - debut_reel)) / 60)::int AS duree_reelle_minutes`,
         [id, ctx.utilisateurId],
       );
       await c.query(`UPDATE demande SET statut='cloturee', modifie_le=now() WHERE id=$1`, [
@@ -244,6 +247,15 @@ export class AudiencesController {
         action: 'audience.cloturer',
         objetType: 'audience',
         objetId: id,
+        // Trace de clôture (arbitrage du 19/10, point 6) : identifiants et durées seulement. Le texte du
+        // résultat reste dans l'audience (le journal ne contient que des identifiants : point 4, Q-5).
+        // Auteur nominatif et heure serveur : colonnes du journal. Motif d'écart et délégation : non
+        // développés (« écart » non défini, délégations au Sprint 2).
+        contexte: {
+          demande_id: a.demande_id,
+          duree_prevue_minutes: cl.rows[0]!.duree_prevue_minutes,
+          duree_reelle_minutes: cl.rows[0]!.duree_reelle_minutes,
+        },
       });
       return this.lire(c, ctx, id);
     });

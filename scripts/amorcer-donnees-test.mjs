@@ -9,69 +9,90 @@
 //
 // HYPOTHESE H6 : le rattachement est un acte d'administration explicite, pas automatique.
 // HYPOTHESE H7 : le nom d'organisation ci-dessous est fictif, à remplacer par le métier.
-import { createRequire } from 'node:module';
+import { createRequire } from "node:module";
 
 const exiger = (nom) => {
   const v = process.env[nom];
-  if (!v) throw new Error(`Variable ${nom} manquante (lancez bash scripts/init-local.sh).`);
+  if (!v)
+    throw new Error(
+      `Variable ${nom} manquante (lancez bash scripts/init-local.sh).`,
+    );
   return v;
 };
 
 // `pg` n'est installé que dans backend/ : on le résout depuis là.
-const require = createRequire(new URL('../backend/package.json', import.meta.url));
-const { Client } = require('pg');
+const require = createRequire(
+  new URL("../backend/package.json", import.meta.url),
+);
+const { Client } = require("pg");
 
-const kc = `http://localhost:${process.env.KEYCLOAK_PORT ?? '8080'}`;
+const kc = `http://localhost:${process.env.KEYCLOAK_PORT ?? "8080"}`;
 const COMPTES = [
-  ['reception.test', 'Réception (compte de test)'],
-  ['assistant1.test', 'Assistant 1 (compte de test)'],
-  ['assistant2.test', 'Assistant 2 (compte de test)'],
-  ['authority.test', 'Autorité (compte de test)'],
-  ['admin.test', 'Administrateur (compte de test)'],
+  // Personnes FICTIVES, une par compte, aucun compte partagé (D04-26) ; courriels en @example.test.
+  // Le Protocole n'a pas de compte permanent (D04-24) : profil de délégation, non modélisé (Sprint 2).
+  ["reception.test", "Réa Test-Accueil"],
+  ["assistant1.test", "Alex Test-Assistant-1"],
+  ["assistant2.test", "Alex Test-Assistant-2"],
+  ["authority.test", "Aude Test-Autorité"],
+  ["admin.test", "Adam Test-Admin"],
 ];
-const AGENDAS = ['Agenda de l’Autorité (fictif)', 'Agenda du Protocole (fictif)'];
-const NOM_ORG = 'Organisation de test (fictive)';
+const AGENDAS = [
+  "Agenda de l’Autorité (fictif)",
+  "Agenda du Protocole (fictif)",
+];
+const NOM_ORG = "Organisation de test (fictive)";
 
 async function jetonAdmin() {
   const r = await fetch(`${kc}/realms/master/protocol/openid-connect/token`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
-      grant_type: 'password',
-      client_id: 'admin-cli',
-      username: process.env.KEYCLOAK_ADMIN ?? 'kcadmin',
-      password: exiger('KEYCLOAK_ADMIN_PASSWORD'),
+      grant_type: "password",
+      client_id: "admin-cli",
+      username: process.env.KEYCLOAK_ADMIN ?? "kcadmin",
+      password: exiger("KEYCLOAK_ADMIN_PASSWORD"),
     }),
   });
-  if (!r.ok) throw new Error(`Connexion administrateur Keycloak refusée (HTTP ${r.status}).`);
+  if (!r.ok)
+    throw new Error(
+      `Connexion administrateur Keycloak refusée (HTTP ${r.status}).`,
+    );
   return (await r.json()).access_token;
 }
 
 const jeton = await jetonAdmin();
 const subs = new Map();
 for (const [nom] of COMPTES) {
-  const r = await fetch(`${kc}/admin/realms/shiku/users?username=${nom}&exact=true`, {
-    headers: { authorization: `Bearer ${jeton}` },
-  });
+  const r = await fetch(
+    `${kc}/admin/realms/shiku/users?username=${nom}&exact=true`,
+    {
+      headers: { authorization: `Bearer ${jeton}` },
+    },
+  );
   const [u] = await r.json();
   if (!u?.id) throw new Error(`Compte ${nom} introuvable dans le realm shiku.`);
   subs.set(nom, u.id);
 }
 
 const db = new Client({
-  host: '127.0.0.1',
+  host: "127.0.0.1",
   port: Number(process.env.POSTGRES_PORT ?? 5432),
-  database: process.env.POSTGRES_DB ?? 'shiku',
-  user: 'shiku_migrator',
-  password: exiger('DB_MIGRATOR_PASSWORD'),
+  database: process.env.POSTGRES_DB ?? "shiku",
+  user: "shiku_migrator",
+  password: exiger("DB_MIGRATOR_PASSWORD"),
 });
 await db.connect();
 try {
-  await db.query('BEGIN');
-  let org = (await db.query('SELECT id FROM organisation WHERE nom = $1', [NOM_ORG])).rows[0];
+  await db.query("BEGIN");
+  let org = (
+    await db.query("SELECT id FROM organisation WHERE nom = $1", [NOM_ORG])
+  ).rows[0];
   if (!org)
     org = (
-      await db.query('INSERT INTO organisation (nom) VALUES ($1) RETURNING id', [NOM_ORG])
+      await db.query(
+        "INSERT INTO organisation (nom) VALUES ($1) RETURNING id",
+        [NOM_ORG],
+      )
     ).rows[0];
   for (const [nom, complet] of COMPTES)
     await db.query(
@@ -80,7 +101,9 @@ try {
       [org.id, subs.get(nom), complet],
     );
   const admin = (
-    await db.query('SELECT id FROM utilisateur WHERE keycloak_sub = $1', [subs.get('admin.test')])
+    await db.query("SELECT id FROM utilisateur WHERE keycloak_sub = $1", [
+      subs.get("admin.test"),
+    ])
   ).rows[0];
   for (const nom of AGENDAS)
     await db.query(
@@ -88,10 +111,12 @@ try {
        ON CONFLICT (organisation_id, nom) DO NOTHING`,
       [org.id, nom, admin.id],
     );
-  await db.query('COMMIT');
-  console.log(`OK : organisation « ${NOM_ORG} », ${COMPTES.length} comptes rattachés, ${AGENDAS.length} agendas.`);
+  await db.query("COMMIT");
+  console.log(
+    `OK : organisation « ${NOM_ORG} », ${COMPTES.length} comptes rattachés, ${AGENDAS.length} agendas.`,
+  );
 } catch (e) {
-  await db.query('ROLLBACK').catch(() => undefined);
+  await db.query("ROLLBACK").catch(() => undefined);
   throw e;
 } finally {
   await db.end();

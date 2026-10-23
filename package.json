@@ -15,6 +15,9 @@
     "migrate:up": "pnpm --filter shiku-backend migrate:up",
     "test:db": "pnpm --filter shiku-backend test:db",
     "dev:frontend": "pnpm --filter shiku-frontend dev",
-    "typecheck": "pnpm -r --if-present typecheck"
+    "typecheck": "pnpm -r --if-present typecheck",
+    "doctor": "node scripts/doctor.mjs",
+    "test:scripts": "node --test \"scripts/*.test.mjs\"",
+    "scan:secrets": "node scripts/controles-commit.mjs arbre && node scripts/controles-commit.mjs historique"
   }
 }

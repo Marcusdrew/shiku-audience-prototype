@@ -26,7 +26,9 @@ export type StatutDemande =
   | 'rejetee'
   | 'planifiee'
   | 'realisee'
-  | 'cloturee';
+  | 'cloturee'
+  // Statut neutre renvoyé par le serveur à la Réception pour une demande rejetée (arbitrage du 19/10).
+  | 'non_retenue';
 export interface Demande {
   id: string;
   reference: string;
@@ -62,6 +64,8 @@ export interface AudienceResume {
   resultat: string | null;
   cloturee_le: string | null;
   conservation_echeance: string | null;
+  /** Responsable de suivi de l'AUDIENCE (fixé à la planification), distinct de celui de la demande. */
+  responsable_suivi_nom?: string;
 }
 export type StatutAudience = 'planifiee' | 'en_cours' | 'terminee' | 'cloturee';
 export interface Audience extends AudienceResume {
@@ -115,11 +119,12 @@ export const creerVisiteur = (
   j: J,
   corps: { nom_complet: string; contact?: string; qualite?: string },
 ) => envoyer<Visiteur>('POST', '/visiteurs', j, corps);
+export const TAILLE_PAGE = 20;
 export const listerDemandes = (
   j: J,
   f: { statut?: string; q?: string; decalage?: number },
   s?: AbortSignal,
-) => get<Liste<Demande>>(`/demandes${qs({ ...f, limite: 20 })}`, j, s);
+) => get<Liste<Demande>>(`/demandes${qs({ ...f, limite: TAILLE_PAGE })}`, j, s);
 export const lireDemande = (j: J, id: string, s?: AbortSignal) =>
   get<Demande>(`/demandes/${id}`, j, s);
 export const creerDemande = (j: J, corps: NouvelleDemande) =>
@@ -147,9 +152,17 @@ export const terminerAudience = (j: J, id: string, resultat: string) =>
   envoyer<Audience>('POST', `/audiences/${id}/terminer`, j, { resultat });
 export const cloturerAudience = (j: J, id: string) =>
   envoyer<Audience>('POST', `/audiences/${id}/cloturer`, j);
-export const lireJournal = (j: J, f: { objet_type?: string; objet_id?: string }, s?: AbortSignal) =>
-  get<Liste<EntreeJournal>>(`/journal${qs({ ...f, limite: 50 })}`, j, s);
+export const TAILLE_PAGE_JOURNAL = 50;
+export const lireJournal = (
+  j: J,
+  f: { objet_type?: string; objet_id?: string; decalage?: number },
+  s?: AbortSignal,
+) => get<Liste<EntreeJournal>>(`/journal${qs({ ...f, limite: TAILLE_PAGE_JOURNAL })}`, j, s);
 export const listerUtilisateurs = (j: J, s?: AbortSignal) =>
   get<Liste<{ id: string; nom_complet: string; actif: boolean }>>('/utilisateurs', j, s);
-export const creerUtilisateur = (j: J, corps: { keycloak_sub: string; nom_complet: string }) =>
-  envoyer<{ id: string }>('POST', '/utilisateurs', j, corps);
+export const creerUtilisateur = (
+  j: J,
+  corps: { prenom: string; nom: string; courriel: string; role: string },
+) => envoyer<{ id: string }>('POST', '/utilisateurs', j, corps);
+export const rattacherUtilisateur = (j: J, corps: { keycloak_sub: string; nom_complet: string }) =>
+  envoyer<{ id: string }>('POST', '/utilisateurs/rattachement', j, corps);

@@ -1,12 +1,12 @@
 import { type DynamicModule, Module } from '@nestjs/common';
 import { HabilitationService, MATRICE } from './habilitation.service.js';
 import { type Matrice, validerMatrice } from './matrice.js';
-import { MATRICE_PROVISOIRE } from './matrice-provisoire.js';
+import { MATRICE_OFFICIELLE } from './matrice-officielle.js';
 
 @Module({
   providers: [
     // Échoue au démarrage si la matrice est malformée.
-    { provide: MATRICE, useFactory: () => validerMatrice(MATRICE_PROVISOIRE) },
+    { provide: MATRICE, useFactory: () => validerMatrice(MATRICE_OFFICIELLE) },
     HabilitationService,
   ],
   exports: [HabilitationService],

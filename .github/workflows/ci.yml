@@ -1,0 +1,111 @@
+# CI de SHIKU Audience (T0-11, T0-12, T0-15, T0-39, T0-48 partie web).
+# STATUT : écrit mais JAMAIS exécuté sur GitHub (aucune exécution possible depuis le bac à sable
+# de développement). Les commandes qu'il lance ont été exécutées localement une à une ; la preuve
+# d'un échec volontaire en pull request reste à produire (docs/dev/CI.md).
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Moindre privilège (T0-32) : lecture seule du dépôt, aucune autre permission, aucun secret.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  qualite:
+    name: Qualité (installation verrouillée, format, lint, types, build, tests)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4 # À ÉPINGLER par empreinte de commit après vérification (T0-36)
+        with:
+          fetch-depth: 0 # l'historique complet sert au scan de secrets et aux messages de commit
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.10.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile # échoue si le verrou n'est pas à jour
+      - run: pnpm format:check
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm build
+      - run: pnpm test # backend (dont /sante, T0-39) et frontend
+      - run: pnpm test:scripts # doctor, contrôles de commit et de secrets
+
+  secrets-et-messages:
+    name: Secrets, fichiers interdits, messages de commit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Arbre de travail
+        run: node scripts/controles-commit.mjs arbre
+      - name: Historique complet (les valeurs ne sont jamais affichées)
+        run: node scripts/controles-commit.mjs historique
+      - name: Messages de commit de la pull request
+        if: github.event_name == 'pull_request'
+        run: node scripts/controles-commit.mjs messages "origin/${{ github.base_ref }}..HEAD"
+
+  base:
+    name: Base PostgreSQL 18 (migrations, rôles, tests de sécurité de la base)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      PGPASSWORD: ci-postgres-jetable # base jetable du runner, jamais exposée
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: ci-postgres-jetable # base jetable du runner, jamais exposée
+          POSTGRES_DB: shiku
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.10.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Mots de passe jetables, rôles de base, migrations
+        run: |
+          gen() { head -c 256 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 24; }
+          {
+            echo "POSTGRES_SUPERUSER=postgres"
+            echo "POSTGRES_SUPERUSER_PASSWORD=$PGPASSWORD"
+            echo "POSTGRES_DB=shiku"
+            echo "POSTGRES_PORT=5432"
+            echo "PGHOST=127.0.0.1"
+            for v in DB_MIGRATOR_PASSWORD DB_APP_PASSWORD DB_PURGE_PASSWORD DB_AUDIT_PASSWORD DB_KEYCLOAK_PASSWORD; do
+              echo "$v=$(gen)"
+            done
+          } >> "$GITHUB_ENV"
+      - name: Créer les rôles (mêmes scripts que Docker)
+        run: |
+          export POSTGRES_USER=postgres
+          bash infra/postgres/01-roles.sh
+          bash infra/postgres/02-keycloak.sh
+      - name: Appliquer les migrations
+        run: pnpm --filter shiku-backend migrate:up
+        env:
+          DATABASE_URL: postgres://shiku_migrator:${{ env.DB_MIGRATOR_PASSWORD }}@127.0.0.1:5432/shiku
+      - name: Tests de sécurité et d'intégration sur la vraie base
+        run: pnpm test:db
